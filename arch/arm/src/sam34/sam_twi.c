@@ -197,7 +197,7 @@ static struct twi_dev_s g_twi0 =
 {
   .dev =
   {
-    .ops = g_twiops,
+    .ops = &g_twiops,
   },
   .base = SAM_TWI0_BASE,
   .irq = SAM_IRQ_TWI0,
@@ -212,7 +212,7 @@ static struct twi_dev_s g_twi1 =
 {
   .dev =
   {
-    .ops = g_twiops,
+    .ops = &g_twiops,
   },
   .base = SAM_TWI1_BASE,
   .irq = SAM_IRQ_TWI1,
