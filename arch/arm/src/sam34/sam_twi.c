@@ -447,7 +447,7 @@ static int twi_interrupt(int irq, void *context, void *arg)
   imr     = twi_getrel(priv, SAM_TWI_IMR_OFFSET);
   pending = sr & imr;
 
-  i2cinfo("TWI%d pending: %08x\n", priv->twi, pending);
+  i2cinfo("TWI%d pending: %08" PRIx32  "\n", priv->twi, pending);
 
   msg = priv->msg;
 
@@ -457,7 +457,7 @@ static int twi_interrupt(int irq, void *context, void *arg)
     {
       /* Wake up the thread with an I/O error indication */
 
-      i2cerr("ERROR: TWI%d pending: %08x\n", priv->twi, pending);
+      i2cerr("ERROR: TWI%d pending: %08" PRIx32 "\n", priv->twi, pending);
       twi_wakeup(priv, -EIO);
     }
 
