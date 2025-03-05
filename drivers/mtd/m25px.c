@@ -106,6 +106,7 @@
 #define M25P_M25P128_CAPACITY      0x18 /* 128 M-bit */
 #define M25P_MT25Q128_CAPACITY     0x18 /* 128 M-bit */
 #define M25P_MT25Q256_CAPACITY     0x19 /* 256 M-bit */
+#define M25P_MT25Q512_CAPACITY     0x20 /* 512 M-bit */
 #define M25P_MT25Q1G_CAPACITY      0x21 /* 1 G-bit */
 
 /*  M25P1 capacity is 131,072 bytes:
