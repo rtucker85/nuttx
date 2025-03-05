@@ -65,6 +65,7 @@
 #include "s32k3xx_emac.h"
 
 #include <arch/board/board.h>
+#include <arch/barriers.h>
 
 #ifdef CONFIG_S32K3XX_ENET
 
