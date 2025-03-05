@@ -606,7 +606,7 @@ static int s32k3xx_pll_config(const struct cgm_pll_config_s *pllcfg)
   /* FIXME make EOCV and GM_SEL configurable */
 
   regval |= (FXOSC_CTRL_COMP_EN | FXOSC_CTRL_EOCV(157) |
-             FXOSC_CTRL_GM_SEL_0_7016X | FXOSC_CTRL_OSCON);
+             FXOSC_CTRL_GM_SEL_0_7016X | FXOSC_CTRL_OSCON | FXOSC_CTRL_OSC_BYP);
 
   putreg32(regval, S32K3XX_FXOSC_CTRL);
 
