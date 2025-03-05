@@ -357,7 +357,7 @@ ssize_t up_progmem_write(size_t addr, const void *buf, size_t count)
   uint32_t i;
   uint32_t dest;
   uint32_t offset;
-  uint32_t *p_offset;
+  uint32_t *p_offset = 0;
   uint32_t *p_src;
   size_t words_to_write;
 
