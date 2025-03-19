@@ -432,7 +432,8 @@ static int bmi270_gyro_scale(FAR struct bmi270_sensor_s *priv,
  ****************************************************************************/
 
 static void bmi270_accel_data(FAR struct bmi270_sensor_s *priv,
-                              FAR int16_t *buf)
+                              FAR int16_t *buf,
+                              FAR int16_t *temp_data)
 {
   FAR struct sensor_lowerhalf_s *lower = &priv->lower;
   struct sensor_accel            accel;
@@ -449,7 +450,7 @@ static void bmi270_accel_data(FAR struct bmi270_sensor_s *priv,
   accel.x           = buf[0] * priv->scale;
   accel.y           = buf[1] * priv->scale;
   accel.z           = buf[2] * priv->scale;
-  accel.temperature = 0;
+  accel.temperature = (float)((((float)((int16_t)temp_data[0])) / 512.0) + 23.0);
 
   lower->push_event(lower->priv, &accel, sizeof(accel));
 }
@@ -470,7 +471,8 @@ static void bmi270_accel_data(FAR struct bmi270_sensor_s *priv,
  ****************************************************************************/
 
 static void bmi270_gyro_data(FAR struct bmi270_sensor_s *priv,
-                             FAR int16_t *buf)
+                             FAR int16_t *buf,
+                             FAR int16_t *temp_data)
 {
   FAR struct sensor_lowerhalf_s *lower = &priv->lower;
   struct sensor_gyro             gyro;
@@ -487,7 +489,7 @@ static void bmi270_gyro_data(FAR struct bmi270_sensor_s *priv,
   gyro.x           = buf[0] * priv->scale;
   gyro.y           = buf[1] * priv->scale;
   gyro.z           = buf[2] * priv->scale;
-  gyro.temperature = 0;
+  gyro.temperature = (float)((((float)((int16_t)temp_data[0])) / 512.0) + 23.0);
 
   lower->push_event(lower->priv, &gyro, sizeof(gyro));
 }
@@ -512,7 +514,8 @@ static int bmi270_thread(int argc, FAR char **argv)
   FAR struct bmi270_sensor_s *accel = &dev->priv[BMI270_ACCEL_IDX];
   FAR struct bmi270_sensor_s *gyro  = &dev->priv[BMI270_GYRO_IDX];
   unsigned long               min_interval;
-  int16_t                     data[6];
+  int16_t                     accel_data[6];
+  int16_t                     temp_data[1];
   int                         ret;
 
   while (true)
@@ -530,20 +533,21 @@ static int bmi270_thread(int argc, FAR char **argv)
 
       /* Get data */
 
-      bmi270_getregs(&gyro->base, BMI270_DATA_8, (FAR uint8_t *)data, 12);
+      bmi270_getregs(&gyro->base, BMI270_DATA_8, (FAR uint8_t *)accel_data, 12);
+      bmi270_getregs(&gyro->base, BMI270_TEMPERATURE_0, (FAR uint8_t *)temp_data, 2);
 
       /* Read accel */
 
       if (accel->enabled)
         {
-          bmi270_accel_data(accel, data);
+          bmi270_accel_data(accel, &accel_data[0], temp_data);
         }
 
       /* Read gyro */
 
       if (gyro->enabled)
         {
-          bmi270_gyro_data(gyro, &data[3]);
+          bmi270_gyro_data(gyro, &accel_data[3], temp_data);
         }
 
       /* Sleeping thread before fetching the next sensor data */
@@ -662,6 +666,15 @@ int bmi270_register_uorb(int devno, FAR struct spi_dev_s *spi)
   up_udelay(200);
 #endif
 
+  /* Check Device ID */
+
+  ret = bmi270_checkid(&tmp->base);
+  if (ret < 0)
+    {
+      snerr("ERROR: Wrong device ID!\n");
+      goto err_init;
+    }
+
   /* Initialization sequence */
 
   ret = bmi270_init_seq(&tmp->base);
@@ -704,7 +717,7 @@ mag_err:
   sensor_unregister(&dev->priv[BMI270_GYRO_IDX].lower, devno);
 gyro_err:
   sensor_unregister(&dev->priv[BMI270_ACCEL_IDX].lower, devno);
-
+err_init:
   kmm_free(dev);
 
   return ret;

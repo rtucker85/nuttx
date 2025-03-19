@@ -552,10 +552,6 @@ config SENSORS_BME680
 
 if SENSORS_BME680
 
-config BME680_I2C_FREQUENCY
-	int "BME680 I2C frequency"
-	default 400000
-
 config BME680_DISABLE_PRESS_MEAS
 	bool "Disable Pressure Measurement"
 	default n
@@ -580,6 +576,12 @@ config BME680_ENABLE_IIR_FILTER
 	---help---
 		Enable IIR filtering for temperature and pressure
 		measurements.
+
+config SENSORS_BME680_POLL
+	bool "Enables polling sensor data"
+	default n
+	---help---
+		Enables polling of sensor.
 
 config SENSORS_BME680_POLL_INTERVAL
 	int "Polling interval in microseconds, default 3 sec"
@@ -654,6 +656,23 @@ config SENSORS_BME688_THREAD_STACKSIZE
 		The stack size for the worker thread.
 
 endif # SENSORS_BME688
+choice
+	prompt "BME680 Interface"
+	default SENSORS_BME680_SPI
+
+config SENSORS_BME680_I2C
+	bool "BME680 I2C Interface"
+	select I2C
+	---help---
+		Enables support for the I2C interface
+
+config SENSORS_BME680_SPI
+	bool "BME680 SPI Interface"
+	select SPI
+	---help---
+		Enables support for the SPI interface
+
+endchoice # BME680 Interface
 
 config SENSORS_DHTXX
 	bool "DHTxx humidity/temperature Sensor support"

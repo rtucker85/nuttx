@@ -30,7 +30,7 @@
 #include <nuttx/config.h>
 #include <stdint.h>
 
-#if defined(CONFIG_I2C) && defined(CONFIG_SENSORS_BME680)
+#if defined(CONFIG_SENSORS_BME680)
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -127,7 +127,11 @@ extern "C"
  *
  ****************************************************************************/
 
+#ifdef CONFIG_SENSORS_BME680_I2C
 int bme680_register(int devno, FAR struct i2c_master_s *i2c);
+#else
+int bme680_register(int devno, FAR struct spi_dev_s *spi);
+#endif
 
 #undef EXTERN
 #ifdef __cplusplus
