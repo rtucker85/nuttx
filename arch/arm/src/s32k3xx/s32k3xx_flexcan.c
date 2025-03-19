@@ -1502,6 +1502,8 @@ static int s32k3xx_ifup(struct net_driver_s *dev)
       s32k3xx_gpiowrite(priv->config->led_pin, priv->config->led_high);
     }
 
+  s32k3xx_gpiowrite(PIN_CAN0_STB, false);
+
   return OK;
 }
 
@@ -1536,6 +1538,8 @@ static int s32k3xx_ifdown(struct net_driver_s *dev)
       s32k3xx_pinconfig(priv->config->led_pin);
       s32k3xx_gpiowrite(priv->config->led_pin, !priv->config->led_high);
     }
+
+  s32k3xx_gpiowrite(PIN_CAN0_STB, true);
 
   return OK;
 }
@@ -2171,6 +2175,9 @@ int s32k3xx_caninitialize(int intf)
       s32k3xx_pinconfig(priv->config->enable_pin);
       s32k3xx_gpiowrite(priv->config->enable_pin, priv->config->enable_high);
     }
+
+  s32k3xx_pinconfig(PIN_CAN0_STB);
+  s32k3xx_gpiowrite(PIN_CAN0_STB, true);
 
   if (priv->config->stb_pin > 0)
     {

@@ -1031,6 +1031,7 @@ int bmi270_init_seq(FAR struct bmi270_dev_s *priv)
   regval = bmi270_getreg8(priv, BMI270_INTERNAL_STAT);
   if ((regval & INTSTAT_MSG_MASK) == INTSTAT_MSG_INITOK)
     {
+      _info("Configuration already loaded\n");
       return OK;
     }
 
@@ -1087,6 +1088,10 @@ int bmi270_init_seq(FAR struct bmi270_dev_s *priv)
     {
       snerr("Initialization failed status=%d\n", regval);
       return -EACCES;
+    }
+  else
+    {
+      _info("Configuration loaded\n");
     }
 
   return OK;

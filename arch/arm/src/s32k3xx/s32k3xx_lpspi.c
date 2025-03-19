@@ -2237,12 +2237,17 @@ struct spi_dev_s *s32k3xx_lpspibus_initialize(int bus)
       if ((s32k3xx_lpspi_getreg32(priv, S32K3XX_LPSPI_CR_OFFSET) &
           LPSPI_CR_MEN) == 0)
         {
-          /* Configure SPI2 pins: SCK, MISO, and MOSI */
+          /* Configure SPI3 pins: SCK, MISO, and MOSI */
 
-          s32k3xx_pinconfig(PIN_LPSPI3_SCK);
-          s32k3xx_pinconfig(PIN_LPSPI3_MISO);
-          s32k3xx_pinconfig(PIN_LPSPI3_MOSI);
-
+          #ifdef PIN_LPSPI3_SCK
+            s32k3xx_pinconfig(PIN_LPSPI3_SCK);
+          #endif
+          #ifdef PIN_LPSPI3_MISO
+            s32k3xx_pinconfig(PIN_LPSPI3_MISO);
+          #endif
+          #ifdef PIN_LPSPI3_MOSI
+            s32k3xx_pinconfig(PIN_LPSPI3_MOSI);
+          #endif
           /* Set up default configuration: Master, 8-bit, etc. */
 
           s32k3xx_lpspi_bus_initialize(priv);
@@ -2253,7 +2258,7 @@ struct spi_dev_s *s32k3xx_lpspibus_initialize(int bus)
 #ifdef CONFIG_S32K3XX_LPSPI4
   if (bus == 4)
     {
-      /* Select SPI3 */
+      /* Select SPI4 */
 
       priv = &g_lpspi4dev;
 
@@ -2262,7 +2267,7 @@ struct spi_dev_s *s32k3xx_lpspibus_initialize(int bus)
       if ((s32k3xx_lpspi_getreg32(priv, S32K3XX_LPSPI_CR_OFFSET) &
           LPSPI_CR_MEN) == 0)
         {
-          /* Configure SPI2 pins: SCK, MISO, and MOSI */
+          /* Configure SPI4 pins: SCK, MISO, and MOSI */
 
           s32k3xx_pinconfig(PIN_LPSPI4_SCK);
           s32k3xx_pinconfig(PIN_LPSPI4_MISO);
@@ -2278,7 +2283,7 @@ struct spi_dev_s *s32k3xx_lpspibus_initialize(int bus)
 #ifdef CONFIG_S32K3XX_LPSPI5
   if (bus == 5)
     {
-      /* Select SPI3 */
+      /* Select SPI5 */
 
       priv = &g_lpspi5dev;
 
@@ -2287,7 +2292,7 @@ struct spi_dev_s *s32k3xx_lpspibus_initialize(int bus)
       if ((s32k3xx_lpspi_getreg32(priv, S32K3XX_LPSPI_CR_OFFSET) &
           LPSPI_CR_MEN) == 0)
         {
-          /* Configure SPI2 pins: SCK, MISO, and MOSI */
+          /* Configure SPI5 pins: SCK, MISO, and MOSI */
 
           s32k3xx_pinconfig(PIN_LPSPI5_SCK);
           s32k3xx_pinconfig(PIN_LPSPI5_MISO);

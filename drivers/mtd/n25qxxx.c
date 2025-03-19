@@ -43,6 +43,7 @@
 #include <nuttx/fs/ioctl.h>
 #include <nuttx/spi/qspi.h>
 #include <nuttx/mtd/mtd.h>
+#include <nuttx/arch.h>
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -73,7 +74,7 @@
  * provide a reasonable default.
  * The actual number of dummies needed is clock and IO command dependent.
  */
-#define CONFIG_N25QXXX_DUMMIES 6
+#define CONFIG_N25QXXX_DUMMIES 12
 #endif
 
 /* N25QXXX Commands *********************************************************/
@@ -90,7 +91,11 @@
                                        *   0x01 | SR                        */
 #define N25QXXX_READ_VOLCFG     0x85  /* Read volatile configuration register:   *
                                        *   0x85 | VCR                       */
+#define N25QXXX_READ_ENHANCED_VOLCFG     0x65  /* Read volatile configuration register:   *
+                                       *   0x85 | VCR                       */
 #define N25QXXX_WRITE_VOLCFG    0x81  /* Write svolatile configuration register: *
+                                       *   0x81 | VCR                       */
+#define N25QXXX_WRITE_ENHANCED_VOLCFG    0x61  /* Write svolatile configuration register: *
                                        *   0x81 | VCR                       */
 #define N25QXXX_WRITE_ENABLE    0x06  /* Write enable:                      *
                                        *   0x06                             */
@@ -422,6 +427,7 @@ static int n25qxxx_command(FAR struct qspi_dev_s *qspi, uint8_t cmd)
 
   finfo("CMD: %02x\n", cmd);
 
+  up_udelay(10 * 1000);
   cmdinfo.flags   = 0;
   cmdinfo.addrlen = 0;
   cmdinfo.cmd     = cmd;
@@ -446,6 +452,7 @@ static int n25qxxx_command_address(FAR struct qspi_dev_s *qspi, uint8_t cmd,
         (unsigned long)addr,
         addrlen);
 
+  up_udelay(10 * 1000);
   cmdinfo.flags   = QSPICMD_ADDRESS;
   cmdinfo.addrlen = addrlen;
   cmdinfo.cmd     = cmd;
@@ -467,6 +474,7 @@ static int n25qxxx_command_read(FAR struct qspi_dev_s *qspi, uint8_t cmd,
 
   finfo("CMD: %02x buflen: %lu\n", cmd, (unsigned long)buflen);
 
+  up_udelay(10 * 1000);
   cmdinfo.flags   = QSPICMD_READDATA;
   cmdinfo.addrlen = 0;
   cmdinfo.cmd     = cmd;
@@ -488,6 +496,7 @@ static int n25qxxx_command_write(FAR struct qspi_dev_s *qspi, uint8_t cmd,
 
   finfo("CMD: %02x buflen: %lu\n", cmd, (unsigned long)buflen);
 
+  up_udelay(10 * 1000);
   cmdinfo.flags   = QSPICMD_WRITEDATA;
   cmdinfo.addrlen = 0;
   cmdinfo.cmd     = cmd;
@@ -504,8 +513,12 @@ static int n25qxxx_command_write(FAR struct qspi_dev_s *qspi, uint8_t cmd,
 
 static uint8_t n25qxxx_read_status(FAR struct n25qxxx_dev_s *priv)
 {
+  up_udelay(10 * 1000);
   DEBUGVERIFY(n25qxxx_command_read(priv->qspi, N25QXXX_READ_STATUS,
                                    (FAR void *)&priv->readbuf[0], 1));
+
+  finfo("STATUS: %02x\n", priv->readbuf[0]);
+
   return priv->readbuf[0];
 }
 
@@ -515,6 +528,7 @@ static uint8_t n25qxxx_read_status(FAR struct n25qxxx_dev_s *priv)
 
 static void n25qxxx_write_status(FAR struct n25qxxx_dev_s *priv)
 {
+  finfo("\n");
   n25qxxx_write_enable(priv);
 
   /* take care to mask of the SRP bit; it is one-time-programmable */
@@ -534,6 +548,20 @@ static uint8_t n25qxxx_read_volcfg(FAR struct n25qxxx_dev_s *priv)
 {
   DEBUGVERIFY(n25qxxx_command_read(priv->qspi, N25QXXX_READ_VOLCFG,
                                    (FAR void *)&priv->readbuf[0], 1));
+
+  _info("VOLCFG: %02x\n", priv->readbuf[0]);
+  return priv->readbuf[0];
+}
+
+/****************************************************************************
+ * Name: n25qxxx_read_enhanced_volcfg
+ ****************************************************************************/
+
+static uint8_t n25qxxx_read_enhanced_volcfg(FAR struct n25qxxx_dev_s *priv)
+{
+  DEBUGVERIFY(n25qxxx_command_read(priv->qspi, N25QXXX_READ_ENHANCED_VOLCFG,
+                                   (FAR void *)&priv->readbuf[0], 1));
+  _info("ENH_VOLCFG: %02x\n", priv->readbuf[0]);
   return priv->readbuf[0];
 }
 
@@ -543,8 +571,22 @@ static uint8_t n25qxxx_read_volcfg(FAR struct n25qxxx_dev_s *priv)
 
 static void n25qxxx_write_volcfg(FAR struct n25qxxx_dev_s *priv)
 {
+  _info("VOLCFG: %02x\n", priv->cmdbuf[0]);
   n25qxxx_write_enable(priv);
   n25qxxx_command_write(priv->qspi, N25QXXX_WRITE_VOLCFG,
+                        (FAR const void *)priv->cmdbuf, 1);
+  n25qxxx_write_disable(priv);
+}
+
+/****************************************************************************
+ * Name:  n25qxxx_write_enhanced_volcfg
+ ****************************************************************************/
+
+static void n25qxxx_write_enhanced_volcfg(FAR struct n25qxxx_dev_s *priv)
+{
+  _info("ENH_VOLCFG: %02x\n", priv->cmdbuf[0]);
+  n25qxxx_write_enable(priv);
+  n25qxxx_command_write(priv->qspi, N25QXXX_WRITE_ENHANCED_VOLCFG,
                         (FAR const void *)priv->cmdbuf, 1);
   n25qxxx_write_disable(priv);
 }
@@ -556,6 +598,7 @@ static void n25qxxx_write_volcfg(FAR struct n25qxxx_dev_s *priv)
 static void n25qxxx_write_enable(FAR struct n25qxxx_dev_s *priv)
 {
   uint8_t status;
+  finfo("\n");
 
   do
     {
@@ -572,6 +615,7 @@ static void n25qxxx_write_enable(FAR struct n25qxxx_dev_s *priv)
 static void n25qxxx_write_disable(FAR struct n25qxxx_dev_s *priv)
 {
   uint8_t status;
+  finfo("\n");
 
   do
     {
@@ -599,7 +643,7 @@ static inline int n25qxxx_readid(struct n25qxxx_dev_s *priv)
 
   n25qxxx_unlock(priv->qspi);
 
-  finfo("Manufacturer: %02x Device Type %02x, Capacity: %02x\n",
+  _info("Manufacturer: %02x Device Type %02x, Capacity: %02x\n",
         priv->cmdbuf[0], priv->cmdbuf[1], priv->cmdbuf[2]);
 
   /* Check for a recognized memory device type */
@@ -674,6 +718,7 @@ static inline int n25qxxx_readid(struct n25qxxx_dev_s *priv)
 static int n25qxxx_protect(FAR struct n25qxxx_dev_s *priv,
                            off_t startblock, size_t nblocks)
 {
+  finfo("\n");
   /* Get the status register value to check the current protection */
 
   priv->cmdbuf[0] = n25qxxx_read_status(priv);
@@ -722,6 +767,7 @@ static int n25qxxx_protect(FAR struct n25qxxx_dev_s *priv,
 static int n25qxxx_unprotect(FAR struct n25qxxx_dev_s *priv,
                              off_t startblock, size_t nblocks)
 {
+  finfo("\n");
   /* Get the status register value to check the current protection */
 
   priv->cmdbuf[0] = n25qxxx_read_status(priv);
@@ -730,6 +776,7 @@ static int n25qxxx_unprotect(FAR struct n25qxxx_dev_s *priv,
     {
       /* Protection already disabled */
 
+      finfo("Already un-protected\n");
       return 0;
     }
 
@@ -772,6 +819,7 @@ static bool n25qxxx_isprotected(FAR struct n25qxxx_dev_s *priv,
                                 uint8_t status,
                                 off_t address)
 {
+  finfo("\n");
   off_t protstart;
   off_t protend;
   off_t protsize;
@@ -870,6 +918,7 @@ static int n25qxxx_erase_sector(FAR struct n25qxxx_dev_s *priv, off_t sector)
 
 static int n25qxxx_erase_chip(FAR struct n25qxxx_dev_s *priv)
 {
+  finfo("\n");
   uint8_t status;
 
   /* Check if the FLASH is protected */
@@ -1556,6 +1605,13 @@ FAR struct mtd_dev_s *n25qxxx_initialize(FAR struct qspi_dev_s *qspi,
           goto errout_with_readbuf;
         }
 
+      //priv->cmdbuf[0] = n25qxxx_read_enhanced_volcfg(priv);
+      //priv->cmdbuf[0] = 0x6F; /* Quad IO, Disabled Reset/Hold */
+      //n25qxxx_write_enhanced_volcfg(priv);
+      //up_udelay(10 * 1000);
+      //(void)n25qxxx_read_enhanced_volcfg(priv);
+      //up_udelay(10 * 1000);
+
       /* Specify the number of dummy cycles via the 'volatile
        * configuration register'
        */
@@ -1564,6 +1620,9 @@ FAR struct mtd_dev_s *n25qxxx_initialize(FAR struct qspi_dev_s *qspi,
       priv->cmdbuf[0] &= 0x0f;
       priv->cmdbuf[0] |= (CONFIG_N25QXXX_DUMMIES << 4);
       n25qxxx_write_volcfg(priv);
+      up_udelay(10 * 1000);
+      (void)n25qxxx_read_volcfg(priv);
+      up_udelay(10 * 1000);
 
       /* Unprotect FLASH sectors if so requested. */
 
