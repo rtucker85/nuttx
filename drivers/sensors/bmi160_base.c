@@ -69,9 +69,8 @@ static void bmi160_configspi(FAR struct spi_dev_s *spi)
 
 uint8_t bmi160_getreg8(FAR struct bmi160_dev_s *priv, uint8_t regaddr)
 {
-  uint8_t regval = 0;
-
 #ifdef CONFIG_SENSORS_BMI160_I2C
+  uint8_t regval = 0;
   struct i2c_msg_s msg[2];
   int ret;
 
@@ -94,6 +93,7 @@ uint8_t bmi160_getreg8(FAR struct bmi160_dev_s *priv, uint8_t regaddr)
     }
 
 #else /* CONFIG_SENSORS_BMI160_SPI */
+  uint8_t regval[2];
   /* If SPI bus is shared then lock and configure it */
 
   SPI_LOCK(priv->spi, true);
@@ -101,23 +101,23 @@ uint8_t bmi160_getreg8(FAR struct bmi160_dev_s *priv, uint8_t regaddr)
 
   /* Select the BMI160 */
 
-  SPI_SELECT(priv->spi, SPIDEV_ACCELEROMETER(0), true);
+  SPI_SELECT(priv->spi, SPIDEV_IMU(0), true);
 
   /* Send register to read and get the next byte */
 
   SPI_SEND(priv->spi, regaddr | 0x80);
-  SPI_RECVBLOCK(priv->spi, &regval, 1);
+  SPI_RECVBLOCK(priv->spi, &regval[0], 2);
 
   /* Deselect the BMI160 */
 
-  SPI_SELECT(priv->spi, SPIDEV_ACCELEROMETER(0), false);
+  SPI_SELECT(priv->spi, SPIDEV_IMU(0), false);
 
   /* Unlock bus */
 
   SPI_LOCK(priv->spi, false);
 #endif
 
-  return regval;
+  return regval[1];
 }
 
 /****************************************************************************
@@ -159,7 +159,7 @@ void bmi160_putreg8(FAR struct bmi160_dev_s *priv, uint8_t regaddr,
 
   /* Select the BMI160 */
 
-  SPI_SELECT(priv->spi, SPIDEV_ACCELEROMETER(0), true);
+  SPI_SELECT(priv->spi, SPIDEV_IMU(0), true);
 
   /* Send register address and set the value */
 
@@ -168,7 +168,7 @@ void bmi160_putreg8(FAR struct bmi160_dev_s *priv, uint8_t regaddr,
 
   /* Deselect the BMI160 */
 
-  SPI_SELECT(priv->spi, SPIDEV_ACCELEROMETER(0), false);
+  SPI_SELECT(priv->spi, SPIDEV_IMU(0), false);
 
   /* Unlock bus */
 
@@ -219,7 +219,7 @@ uint16_t bmi160_getreg16(FAR struct bmi160_dev_s *priv, uint8_t regaddr)
 
   /* Select the BMI160 */
 
-  SPI_SELECT(priv->spi, SPIDEV_ACCELEROMETER(0), true);
+  SPI_SELECT(priv->spi, SPIDEV_IMU(0), true);
 
   /* Send register to read and get the next 2 bytes */
 
@@ -228,7 +228,7 @@ uint16_t bmi160_getreg16(FAR struct bmi160_dev_s *priv, uint8_t regaddr)
 
   /* Deselect the BMI160 */
 
-  SPI_SELECT(priv->spi, SPIDEV_ACCELEROMETER(0), false);
+  SPI_SELECT(priv->spi, SPIDEV_IMU(0), false);
 
   /* Unlock bus */
 
@@ -279,7 +279,7 @@ void bmi160_getregs(FAR struct bmi160_dev_s *priv, uint8_t regaddr,
 
   /* Select the BMI160 */
 
-  SPI_SELECT(priv->spi, SPIDEV_ACCELEROMETER(0), true);
+  SPI_SELECT(priv->spi, SPIDEV_IMU(0), true);
 
   /* Send register to read and get the next 2 bytes */
 
@@ -288,7 +288,7 @@ void bmi160_getregs(FAR struct bmi160_dev_s *priv, uint8_t regaddr,
 
   /* Deselect the BMI160 */
 
-  SPI_SELECT(priv->spi, SPIDEV_ACCELEROMETER(0), false);
+  SPI_SELECT(priv->spi, SPIDEV_IMU(0), false);
 
   /* Unlock bus */
 

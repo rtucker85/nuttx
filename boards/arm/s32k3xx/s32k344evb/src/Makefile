@@ -49,4 +49,8 @@ ifeq ($(CONFIG_S32K3XX_LPSPI),y)
 CSRCS += s32k3xx_spi.c
 endif
 
+ifeq ($(CONFIG_S32K3XX_EMIOS),y)
+CSRCS += s32k3xx_spi.c
+endif
+
 include $(TOPDIR)/boards/Board.mk

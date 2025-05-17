@@ -72,14 +72,6 @@ struct can_recvfrom_s
 };
 
 /****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-#ifdef CONFIG_NET_CANPROTO_OPTIONS
-static int can_recv_filter(FAR struct can_conn_s *conn, canid_t id);
-#endif
-
-/****************************************************************************
  * Name: can_add_recvlen
  *
  * Description:
@@ -338,7 +330,7 @@ static inline int can_readahead(struct can_recvfrom_s *pstate)
 }
 
 #ifdef CONFIG_NET_CANPROTO_OPTIONS
-static int can_recv_filter(FAR struct can_conn_s *conn, canid_t id)
+int can_recv_filter(FAR struct can_conn_s *conn, canid_t id)
 {
   uint32_t i;
 

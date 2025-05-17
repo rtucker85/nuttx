@@ -739,7 +739,7 @@ static void coredump_dump_syslog(pid_t pid)
 static void coredump_dump_dev(pid_t pid)
 {
   FAR void *stream = &g_devstream;
-  int ret;
+  int ret = 0;
 
   if (g_devstream.inode == NULL)
     {
@@ -797,7 +797,7 @@ int coredump_add_memory_region(FAR const void *ptr, size_t size,
 {
   FAR struct memory_region_s *region;
   size_t count = 1; /* 1 for end flag */
-  int ret;
+  int ret = 0;
 
   ret = coredump_initialize_memory_region();
   if (ret < 0)

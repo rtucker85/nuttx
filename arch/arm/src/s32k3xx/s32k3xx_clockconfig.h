@@ -32,7 +32,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "s32k3xx_clocknames.h"
+//#include "s32k3xx_clocknames.h"
+#include "Clock_Ip_Types.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -364,7 +365,7 @@ extern "C"
  *
  ****************************************************************************/
 
-int s32k3xx_clockconfig(const struct clock_configuration_s *clkcfg);
+int s32k3xx_clockconfig(void);
 
 /****************************************************************************
  * Name: s32k3xx_get_coreclk
@@ -415,7 +416,7 @@ uint32_t s32k3xx_get_sysclk(enum cgm_system_clock_type_e type);
  *
  ****************************************************************************/
 
-uint32_t s32k3xx_get_freq(enum clock_names_e clksrc);
+uint32_t s32k3xx_get_freq(Clock_Ip_NameType clksrc);
 
 #undef EXTERN
 #if defined(__cplusplus)

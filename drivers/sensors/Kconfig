@@ -539,26 +539,26 @@ config SENSORS_BMP280
 
 if SENSORS_BMP280
 
-choice
-	prompt "I2C Address"
-	default BMP280_I2C_ADDR_76
-
-config BMP280_I2C_ADDR_76
-	bool "0x76"
+config SENSORS_BMP280_POLL
+	bool "Enables polling sensor data"
+	default n
 	---help---
-		Default address.
-		If SDO pin is pulled to GND, use 0x76
+		Enables polling of sensor.
 
-config BMP280_I2C_ADDR_77
-	bool "0x77"
+config SENSORS_BMP280_POLL_INTERVAL
+	int "Polling interval in microseconds, default 1 sec"
+	depends on SENSORS_BMP280_POLL
+	default 1000000
+	range 0 4294967295
 	---help---
-		If SDO pin is pulled to VDDIO, use 0x77
+		The interval until a new sensor measurement will be triggered.
 
-endchoice # I2C Address
-
-config BMP280_I2C_FREQUENCY
-	int "BMP280 I2C frequency"
-	default 400000
+config SENSORS_BMP280_THREAD_STACKSIZE
+	int "Worker thread stack size"
+	depends on SENSORS_BMP280_POLL
+	default 1024
+	---help---
+		The stack size for the worker thread.
 
 endif # SENSORS_BMP280
 
@@ -615,6 +615,23 @@ config SENSORS_BME680_THREAD_STACKSIZE
 	---help---
 		The stack size for the worker thread.
 
+choice
+	prompt "BME680 Interface"
+	default SENSORS_BME680_SPI
+
+config SENSORS_BME680_I2C
+	bool "BME680 I2C Interface"
+	select I2C
+	---help---
+		Enables support for the I2C interface
+
+config SENSORS_BME680_SPI
+	bool "BME680 SPI Interface"
+	select SPI
+	---help---
+		Enables support for the SPI interface
+
+endchoice # BME680 Interface
 endif # SENSORS_BME680
 
 config SENSORS_BME688
@@ -675,23 +692,6 @@ config SENSORS_BME688_THREAD_STACKSIZE
 		The stack size for the worker thread.
 
 endif # SENSORS_BME688
-choice
-	prompt "BME680 Interface"
-	default SENSORS_BME680_SPI
-
-config SENSORS_BME680_I2C
-	bool "BME680 I2C Interface"
-	select I2C
-	---help---
-		Enables support for the I2C interface
-
-config SENSORS_BME680_SPI
-	bool "BME680 SPI Interface"
-	select SPI
-	---help---
-		Enables support for the SPI interface
-
-endchoice # BME680 Interface
 
 config SENSORS_DHTXX
 	bool "DHTxx humidity/temperature Sensor support"

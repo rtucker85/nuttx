@@ -77,8 +77,8 @@ static void devif_callback_free(FAR struct net_driver_s *dev,
                                 FAR struct devif_callback_s **list_head,
                                 FAR struct devif_callback_s **list_tail)
 {
-  FAR struct devif_callback_s *prev;
-  FAR struct devif_callback_s *curr;
+  static struct devif_callback_s *prev;
+  static struct devif_callback_s *curr;
 
   if (cb)
     {
@@ -514,7 +514,11 @@ uint16_t devif_dev_event(FAR struct net_driver_s *dev, uint16_t flags)
    * set in the flags set.
    */
 
-  net_lock();
+  if (!up_interrupt_context())
+    {
+      net_lock();
+    }
+
   for (cb = dev->d_devcb; cb != NULL && flags != 0; cb = next)
     {
       /* Save the pointer to the next callback in the lists.  This is done
@@ -551,7 +555,11 @@ uint16_t devif_dev_event(FAR struct net_driver_s *dev, uint16_t flags)
         }
     }
 
-  net_unlock();
+    if (!up_interrupt_context())
+    {
+      net_unlock();
+    }
+
   return flags;
 }
 

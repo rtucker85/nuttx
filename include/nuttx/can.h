@@ -61,12 +61,23 @@
 /* CAN payload length and DLC definitions according to ISO 11898-1 */
 
 #define CAN_MAX_DLC 8
+#define CAN_MAX_RAW_DLC 15
 #define CAN_MAX_DLEN 8
 
 /* CAN FD payload length and DLC definitions according to ISO 11898-7 */
 
 #define CANFD_MAX_DLC 15
 #define CANFD_MAX_DLEN 64
+
+/*
+ * CAN XL payload length and DLC definitions according to ISO 11898-1
+ * CAN XL DLC ranges from 0 .. 2047 => data length from 1 .. 2048 byte
+ */
+#define CANXL_MIN_DLC 0
+#define CANXL_MAX_DLC 2047
+#define CANXL_MAX_DLC_MASK 0x07FF
+#define CANXL_MIN_DLEN 1
+#define CANXL_MAX_DLEN 2048
 
 /* Defined bits for canfd_frame.flags
  *
@@ -274,12 +285,19 @@ typedef uint32_t can_err_mask_t;
 
 struct can_frame
 {
-  canid_t can_id;  /* 32 bit CAN_ID + EFF/RTR/ERR flags */
-  uint8_t can_dlc; /* frame payload length in byte (0 .. CAN_MAX_DLEN) */
-  uint8_t __pad;   /* padding */
-  uint8_t __res0;  /* reserved / padding */
-  uint8_t __res1;  /* reserved / padding */
-  uint8_t data[CAN_MAX_DLEN];
+  canid_t can_id;   /* 32 bit CAN_ID + EFF/RTR/ERR flags */
+	begin_packed_struct union {
+		/* CAN frame payload length in byte (0 .. CAN_MAX_DLEN)
+		 * was previously named can_dlc so we need to carry that
+		 * name for legacy support
+		 */
+		uint8_t len;
+		uint8_t can_dlc; /* deprecated */
+	} end_packed_struct; /* disable padding added in some ABIs */
+  uint8_t  __pad;   /* padding */
+  uint8_t  __res0;  /* reserved / padding */
+  uint8_t  len8_dlc;  /* reserved / padding */
+  uint8_t  data[CAN_MAX_DLEN] aligned_data(8);
 };
 
 /* struct canfd_frame - CAN flexible data rate frame structure
@@ -346,6 +364,35 @@ struct sockaddr_can
   } can_addr;
 };
 
+/*
+ * defined bits for canxl_frame.flags
+ *
+ * The canxl_frame.flags element contains two bits CANXL_XLF and CANXL_SEC
+ * and shares the relative position of the struct can[fd]_frame.len element.
+ * The CANXL_XLF bit ALWAYS needs to be set to indicate a valid CAN XL frame.
+ * As a side effect setting this bit intentionally breaks the length checks
+ * for Classical CAN and CAN FD frames.
+ *
+ * Undefined bits in canxl_frame.flags are reserved and shall be set to zero.
+ */
+#define CANXL_XLF 0x80 /* mandatory CAN XL frame flag (must always be set!) */
+#define CANXL_SEC 0x01 /* Simple Extended Content (security/segmentation) */
+
+/* the 8-bit VCID is optionally placed in the canxl_frame.prio element */
+#define CANXL_VCID_OFFSET 16 /* bit offset of VCID in prio element */
+#define CANXL_VCID_VAL_MASK 0xFFUL /* VCID is an 8-bit value */
+#define CANXL_VCID_MASK (CANXL_VCID_VAL_MASK << CANXL_VCID_OFFSET)
+
+struct canxl_frame
+{
+	canid_t  prio;  /* 11 bit priority for arbitration / 8 bit VCID */
+	uint8_t  flags; /* additional flags for CAN XL */
+	uint8_t  sdt;   /* SDU (service data unit) type */
+	uint16_t len;   /* frame payload length in byte */
+	uint32_t af;    /* acceptance field */
+	uint8_t  data[CANXL_MAX_DLEN];
+};
+
 /* struct can_filter - CAN ID based filter in can_register().
  * can_id:   Relevant bits of CAN ID which are not masked out.
  * can_mask: CAN mask (see description)
@@ -358,12 +405,13 @@ struct sockaddr_can
  * The filter can be inverted (CAN_INV_FILTER bit set in can_id) or it can
  * filter for error message frames (CAN_ERR_FLAG bit set in mask).
  */
-
+#ifndef CUSTOM_CAN_FILTER
 struct can_filter
 {
   canid_t can_id;
   canid_t can_mask;
 };
+#endif
 
 /****************************************************************************
  * Public Function Prototypes

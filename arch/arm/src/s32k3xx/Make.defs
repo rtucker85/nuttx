@@ -30,8 +30,35 @@ CHIP_ASRCS += startup.S
 
 CHIP_CSRCS  = s32k3xx_irq.c s32k3xx_clrpend.c s32k3xx_flashboot.c
 CHIP_CSRCS += s32k3xx_start.c s32k3xx_lowputc.c s32k3xx_clockconfig.c
-CHIP_CSRCS += s32k3xx_periphclocks.c s32k3xx_pin.c s32k3xx_pingpio.c
+CHIP_CSRCS += s32k3xx_pin.c s32k3xx_pingpio.c
 CHIP_CSRCS += s32k3xx_idle.c s32k3xx_allocateheap.c
+
+CHIP_CSRCS += Clock_Ip.c
+CHIP_CSRCS += Clock_Ip_Cfg.c
+CHIP_CSRCS += Clock_Ip_Monitor.c
+CHIP_CSRCS += Clock_Ip_Divider.c
+CHIP_CSRCS += Clock_Ip_DividerTrigger.c
+CHIP_CSRCS += Clock_Ip_ExtOsc.c
+CHIP_CSRCS += Clock_Ip_FracDiv.c
+CHIP_CSRCS += Clock_Ip_Gate.c
+CHIP_CSRCS += Clock_Ip_IntOsc.c
+CHIP_CSRCS += Clock_Ip_Pll.c
+CHIP_CSRCS += Clock_Ip_Selector.c
+CHIP_CSRCS += Clock_Ip_ProgFreqSwitch.c
+CHIP_CSRCS += Clock_Ip_Data.c
+CHIP_CSRCS += Clock_Ip_Specific.c
+CHIP_CSRCS += Clock_Ip_Frequency.c
+CHIP_CSRCS += Emios_Mcl_Ip_Irq.c
+CHIP_CSRCS += Emios_Mcl_Ip.c
+CHIP_CSRCS += Emios_Pwm_Ip_Irq.c
+CHIP_CSRCS += Emios_Pwm_Ip.c
+CHIP_CSRCS += Emios_Mcl_Ip_VS_0_PBcfg.c
+CHIP_CSRCS += Emios_Pwm_Ip_VS_0_PBcfg.c
+CHIP_CSRCS += OsIf_Timer.c
+//CHIP_CSRCS += SchM_Mcu.c
+//CHIP_CSRCS += OsIf_Timer_System.c
+//CHIP_CSRCS += osif.c
+//CHIP_CSRCS += OsIf_Interrupts.c
 
 # Configuration-dependent S32K3 files
 

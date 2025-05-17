@@ -418,6 +418,7 @@ int can_setsockopt(FAR struct socket *psock, int level, int option,
 #ifdef CONFIG_NET_CANPROTO_OPTIONS
 int can_getsockopt(FAR struct socket *psock, int level, int option,
                    FAR void *value, FAR socklen_t *value_len);
+int can_recv_filter(FAR struct can_conn_s *conn, canid_t id);
 #endif
 
 #undef EXTERN

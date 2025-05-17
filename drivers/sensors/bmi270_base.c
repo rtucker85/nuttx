@@ -1004,9 +1004,9 @@ void bmi270_set_normal_imu(FAR struct bmi270_dev_s *priv)
   /* Set accel and gyro output data rate */
 
   bmi270_putreg8(priv, BMI270_ACC_CONFIG,
-                 ACCEL_NORMAL_AVG4 | ACCEL_ODR_100HZ);
+                 ACCEL_NORMAL_AVG4 | ACCEL_ODR_200HZ);
   bmi270_putreg8(priv, BMI270_GYR_CONFIG,
-                 GYRO_NORMAL_MODE | GYRO_ODR_100HZ);
+                 GYRO_NORMAL_MODE | GYRO_ODR_200HZ);
 
   /* Disable the adv_power_save bit */
 
@@ -1086,7 +1086,7 @@ int bmi270_init_seq(FAR struct bmi270_dev_s *priv)
   regval = bmi270_getreg8(priv, BMI270_INTERNAL_STAT);
   if ((regval & INTSTAT_MSG_MASK) != INTSTAT_MSG_INITOK)
     {
-      snerr("Initialization failed status=%d\n", regval);
+      _err("Initialization failed status=%d\n", regval);
       return -EACCES;
     }
   else
@@ -1112,12 +1112,13 @@ int bmi270_checkid(FAR struct bmi270_dev_s *priv)
   /* Read device ID  */
 
   devid = bmi270_getreg8(priv, BMI270_CHIP_ID);
-  sninfo("devid: %04x\n", devid);
+  _info("devid: %02x\n", devid);
 
   if (devid != (uint16_t) DEVID)
     {
       /* ID is not Correct */
 
+      _err("Wrong Device ID! %02x\n", devid);
       return -ENODEV;
     }
 

@@ -153,7 +153,7 @@ struct bmp280_meas_s
  *
  ****************************************************************************/
 
-int bmp280_register(int devno, FAR struct i2c_master_s *i2c);
+int bmp280_register(int devno, FAR struct spi_dev_s *spi);
 
 #undef EXTERN
 #ifdef __cplusplus

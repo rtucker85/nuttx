@@ -31,7 +31,7 @@
 #include <debug.h>
 
 #include "arm_internal.h"
-#include "s32k3xx_clockconfig.h"
+//#include "s32k3xx_clockconfig.h"
 #include "s32k3xx_periphclocks.h"
 #include "hardware/s32k3xx_mc_me.h"
 
@@ -39,7 +39,7 @@
  * Private Functions
  ****************************************************************************/
 
-static inline uint32_t s32k3xx_get_cofb_clken(enum clock_names_e clkname)
+static inline uint32_t s32k3xx_get_cofb_clken(Clock_Ip_NameType clkname)
 {
   if (clkname < 64)
     {
@@ -72,7 +72,7 @@ static inline uint32_t s32k3xx_get_cofb_clken(enum clock_names_e clkname)
 }
 
 static inline uint32_t s32k3xx_get_cofb_clken_index(
-                             enum clock_names_e clkname)
+                             Clock_Ip_NameType clkname)
 {
   return (clkname - ((clkname / 128) * 128)) % 32;
 }

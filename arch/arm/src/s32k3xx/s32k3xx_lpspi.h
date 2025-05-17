@@ -119,6 +119,7 @@ void s32k3xx_lpspi2select(struct spi_dev_s *dev, uint32_t devid,
                           bool selected);
 uint8_t s32k3xx_lpspi2status(struct spi_dev_s *dev, uint32_t devid);
 int s32k3xx_lpspi2cmddata(struct spi_dev_s *dev, uint32_t devid, bool cmd);
+bool s32k3xx_ads131m02_drdy(void);
 #endif
 
 #ifdef CONFIG_S32K3XX_LPSPI3

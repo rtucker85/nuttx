@@ -549,7 +549,7 @@ static uint8_t n25qxxx_read_volcfg(FAR struct n25qxxx_dev_s *priv)
   DEBUGVERIFY(n25qxxx_command_read(priv->qspi, N25QXXX_READ_VOLCFG,
                                    (FAR void *)&priv->readbuf[0], 1));
 
-  _info("VOLCFG: %02x\n", priv->readbuf[0]);
+  finfo("VOLCFG: %02x\n", priv->readbuf[0]);
   return priv->readbuf[0];
 }
 
@@ -561,7 +561,7 @@ static uint8_t n25qxxx_read_enhanced_volcfg(FAR struct n25qxxx_dev_s *priv)
 {
   DEBUGVERIFY(n25qxxx_command_read(priv->qspi, N25QXXX_READ_ENHANCED_VOLCFG,
                                    (FAR void *)&priv->readbuf[0], 1));
-  _info("ENH_VOLCFG: %02x\n", priv->readbuf[0]);
+  finfo("ENH_VOLCFG: %02x\n", priv->readbuf[0]);
   return priv->readbuf[0];
 }
 
@@ -571,7 +571,7 @@ static uint8_t n25qxxx_read_enhanced_volcfg(FAR struct n25qxxx_dev_s *priv)
 
 static void n25qxxx_write_volcfg(FAR struct n25qxxx_dev_s *priv)
 {
-  _info("VOLCFG: %02x\n", priv->cmdbuf[0]);
+  finfo("VOLCFG: %02x\n", priv->cmdbuf[0]);
   n25qxxx_write_enable(priv);
   n25qxxx_command_write(priv->qspi, N25QXXX_WRITE_VOLCFG,
                         (FAR const void *)priv->cmdbuf, 1);
@@ -584,7 +584,7 @@ static void n25qxxx_write_volcfg(FAR struct n25qxxx_dev_s *priv)
 
 static void n25qxxx_write_enhanced_volcfg(FAR struct n25qxxx_dev_s *priv)
 {
-  _info("ENH_VOLCFG: %02x\n", priv->cmdbuf[0]);
+  finfo("ENH_VOLCFG: %02x\n", priv->cmdbuf[0]);
   n25qxxx_write_enable(priv);
   n25qxxx_command_write(priv->qspi, N25QXXX_WRITE_ENHANCED_VOLCFG,
                         (FAR const void *)priv->cmdbuf, 1);
@@ -643,7 +643,7 @@ static inline int n25qxxx_readid(struct n25qxxx_dev_s *priv)
 
   n25qxxx_unlock(priv->qspi);
 
-  _info("Manufacturer: %02x Device Type %02x, Capacity: %02x\n",
+  finfo("Manufacturer: %02x Device Type %02x, Capacity: %02x\n",
         priv->cmdbuf[0], priv->cmdbuf[1], priv->cmdbuf[2]);
 
   /* Check for a recognized memory device type */

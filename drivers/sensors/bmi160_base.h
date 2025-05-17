@@ -46,7 +46,7 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define DEVID               0xd1
+#define DEVID               0x24
 
 /* I2C  Address
  *
