@@ -30,7 +30,7 @@
 
 #include <stdbool.h>
 
-#include "s32k3xx_clocknames.h"
+//#include "s32k3xx_clocknames.h"
 #include "s32k3xx_periphclocks.h"
 
 #include "mr-canhubk3.h"

@@ -36,7 +36,7 @@
 
 #include <nuttx/arch.h>
 #include <nuttx/kmalloc.h>
-#include <nuttx/kthread.h>
+#include <nuttx/kthread.h>cc
 #include <nuttx/signal.h>
 #include <nuttx/fs/fs.h>
 #ifdef CONFIG_SENSORS_BME680_I2C
@@ -51,12 +51,10 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define BMI270_SPI_MAXFREQUENCY 10000000
-#define BMI270_I2C_FREQ         400000
+#define BME680_SPI_FREQ 1000000
+#define BME680_I2C_FREQ 400000
 
 #define BME680_ADDR 0x76 /* I2C Slave Address */
-#define BMI270_I2C_FREQ CONFIG_BME680_I2C_FREQUENCY
-#define BME680_SPI_FREQ CONFIG_BME680_SPI_FREQUENCY
 #define BME680_DEVID 0x61
 
 /* Sub-sensor definitions */
@@ -98,8 +96,9 @@
 /* Register addresses */
 
 #define BME680_STATUS_REG_ADDR 0X73
-#define BME680_RESET_REG_ADDR 0xE0
-#define BME680_ID_REG_ADDR 0xD0
+#define BME680_RESET_REG_ADDR 0x60
+#define BME680_ID_REG_ADDR_SPI 0x50 //I2C has this as D0 - TODO - create a new SPI mapping
+#define BME680_ID_REG_ADDR_I2C 0xD0
 
 /* Registers controlling oversampling */
 
@@ -357,23 +356,23 @@ struct bme680_sensor_s
   /* Lowerhalfs for every sub-sensor */
 
   struct sensor_lowerhalf_s lower;
-  struct bme680_calib_s calib;   /* Calibration data */
-  struct bme680_config_s config; /* Configuration data */
-  bool calibrated;               /* Is the device set up? */
-  FAR void *dev;
-  bool enabled;
+  struct bme680_calib_s     calib;      /* Calibration data */
+  struct bme680_config_s    config;     /* Configuration data */
+  bool                      calibrated; /* Is the device set up? */
+  FAR void                  *dev;
+  bool                      enabled;
 #ifdef CONFIG_SENSORS_BME680_POLL
-  uint32_t interval;
+  uint32_t                  interval;
 #endif
-  struct bme680_dev_s base;
+  struct bme680_dev_s       base;
 };
 
 struct bme680_sensor_dev_s
 {
-  struct bme680_sensor_s priv[BME680_SENSORS_COUNT];   /* Sensor private data */
-  mutex_t lock;             /* Manages exclusive access to the device */
+  struct bme680_sensor_s  priv[BME680_SENSORS_COUNT]; /* Sensor private data */
+  mutex_t                 lock;                       /* Manages exclusive access to the device */
 #ifdef CONFIG_SENSORS_BME680_POLL
-  sem_t run;                    /* Locks sensor thread */
+  sem_t                   run;                        /* Locks sensor thread */
 #endif
 };
 
@@ -417,7 +416,7 @@ static int bme680_activate(FAR struct sensor_lowerhalf_s *lower,
 static int bme680_set_interval(FAR struct sensor_lowerhalf_s *lower,
                                FAR struct file *filep,
                                FAR uint32_t *period_us);
-#ifndef CONFIG_SENSORS_BMI270_POLL
+#ifndef CONFIG_SENSORS_BME680_POLL
 static int bme680_fetch(FAR struct sensor_lowerhalf_s *lower,
                         FAR struct file *filep,
                         FAR char *buffer, size_t buflen);
@@ -432,6 +431,7 @@ static int bme680_control(FAR struct sensor_lowerhalf_s *lower,
  * Private Data
  ****************************************************************************/
 
+#ifdef CONFIG_SENSORS_BME680_POLL
 static const push_data_func deliver_data[BME680_SENSORS_COUNT] =
 {
 #ifndef CONFIG_BME680_DISABLE_PRESS_MEAS
@@ -448,6 +448,7 @@ static const push_data_func deliver_data[BME680_SENSORS_COUNT] =
   , bme680_push_gas_data
 #endif
 };
+#endif
 
 static const struct sensor_ops_s g_sensor_ops =
 {
@@ -478,12 +479,64 @@ static const struct sensor_ops_s g_sensor_ops =
  {
    /* Configure SPI for the BME680 */
 
-   SPI_SETMODE(spi, SPIDEV_MODE0);
+   SPI_SETMODE(spi, SPIDEV_MODE3);
    SPI_SETBITS(spi, 8);
    SPI_HWFEATURES(spi, 0);
-   SPI_SETFREQUENCY(spi, BMI270_SPI_MAXFREQUENCY);
+   SPI_SETFREQUENCY(spi, BME680_SPI_FREQ);
  }
  #endif
+
+static uint8_t bme680_select_page(FAR struct bme680_dev_s *priv, uint8_t regaddr)
+{
+  uint8_t page = 0;
+  uint8_t regval[2];
+
+  page = (regaddr & 0x80) ? 0 : 1;
+
+  SPI_LOCK(priv->spi, true);
+  bme680_configspi(priv->spi);
+
+  /* Select the BME680 */
+
+  SPI_SELECT(priv->spi, SPIDEV_BAROMETER(0), true);
+
+  /* Send register to read and get the next 2 bytes */
+
+  SPI_SEND(priv->spi, BME680_STATUS_REG_ADDR | 0x80);
+  SPI_RECVBLOCK(priv->spi, regval, 2);
+  //sninfo("regval: 0x%02x 0x%02x\n", regval[1], regval[0]);
+
+  /* Deselect the BME680 */
+
+  SPI_SELECT(priv->spi, SPIDEV_BAROMETER(0), false);
+
+  sninfo("page: 0x%02x\n", page);
+  if (page)
+    regval[1] |= 0x10;
+  else
+    regval[1] &= ~0x10;
+
+  /* Select the BME680 */
+
+  SPI_SELECT(priv->spi, SPIDEV_BAROMETER(0), true);
+
+  /* Send register to read and get the next 2 bytes */
+
+  //sninfo("regaddr: 0x%02x\n", BME680_STATUS_REG_ADDR);
+  //sninfo("regval: 0x%02x\n", regval[1]);
+  SPI_SEND(priv->spi, BME680_STATUS_REG_ADDR);
+  SPI_SEND(priv->spi, regval[1]);
+
+  /* Deselect the BME680 */
+
+  SPI_SELECT(priv->spi, SPIDEV_BAROMETER(0), false);
+
+  /* Unlock bus */
+
+  SPI_LOCK(priv->spi, false);
+
+  up_mdelay(1);
+}
 
 /****************************************************************************
  * Name: bme680_getreg8
@@ -500,13 +553,13 @@ static uint8_t bme680_getreg8(FAR struct bme680_dev_s *priv, uint8_t regaddr)
   uint8_t regval = 0;
   int ret;
 
-  msg[0].frequency = BMI270_I2C_FREQ;
+  msg[0].frequency = BME680_I2C_FREQ;
   msg[0].addr = BME680_ADDR;
   msg[0].flags = 0;
   msg[0].buffer = &regaddr;
   msg[0].length = 1;
 
-  msg[1].frequency = BMI270_I2C_FREQ;
+  msg[1].frequency = BME680_I2C_FREQ;
   msg[1].addr = BME680_ADDR;
   msg[1].flags = I2C_M_READ;
   msg[1].buffer = &regval;
@@ -521,10 +574,13 @@ static uint8_t bme680_getreg8(FAR struct bme680_dev_s *priv, uint8_t regaddr)
 
   return regval;
 #else
+  sninfo("regaddr: 0x%02x\n", regaddr);
+  bme680_select_page(priv, regaddr);
+
   uint8_t regval[2];
+  bme680_configspi(priv->spi);
 
   SPI_LOCK(priv->spi, true);
-  bme680_configspi(priv->spi);
 
   /* Select the BME680 */
 
@@ -534,6 +590,7 @@ static uint8_t bme680_getreg8(FAR struct bme680_dev_s *priv, uint8_t regaddr)
 
   SPI_SEND(priv->spi, regaddr | 0x80);
   SPI_RECVBLOCK(priv->spi, regval, 2);
+  sninfo("regval: 0x%02x 0x%02x\n", regval[1], regval[0]);
 
   /* Deselect the BME680 */
 
@@ -564,13 +621,13 @@ static int bme680_getregs(FAR struct bme680_dev_s *priv, uint8_t regaddr,
   struct i2c_msg_s msg[2];
   int ret;
 
-  msg[0].frequency = BMI270_I2C_FREQ;
+  msg[0].frequency = BME680_I2C_FREQ;
   msg[0].addr = BME680_ADDR;
   msg[0].flags = 0;
   msg[0].buffer = &regaddr;
   msg[0].length = 1;
 
-  msg[1].frequency = BMI270_I2C_FREQ;
+  msg[1].frequency = BME680_I2C_FREQ;
   msg[1].addr = BME680_ADDR;
   msg[1].flags = I2C_M_READ;
   msg[1].buffer = rxbuffer;
@@ -585,10 +642,13 @@ static int bme680_getregs(FAR struct bme680_dev_s *priv, uint8_t regaddr,
 
   return OK;
 #else
-  //uint8_t regval[2];
+  uint8_t dummy = 0;
+  sninfo("regaddr: 0x%02x\n", regaddr);
+  bme680_select_page(priv, regaddr);
+
+  bme680_configspi(priv->spi);
 
   SPI_LOCK(priv->spi, true);
-  bme680_configspi(priv->spi);
 
   /* Select the BME680 */
 
@@ -597,6 +657,7 @@ static int bme680_getregs(FAR struct bme680_dev_s *priv, uint8_t regaddr,
   /* Send register to read and get the next 2 bytes */
 
   SPI_SEND(priv->spi, regaddr | 0x80);
+  SPI_RECVBLOCK(priv->spi, &dummy, 1);
   SPI_RECVBLOCK(priv->spi, rxbuffer, length);
 
   /* Deselect the BME680 */
@@ -632,7 +693,7 @@ static int bme680_putreg8(FAR struct bme680_dev_s *priv, uint8_t regaddr,
   txbuffer[0] = regaddr;
   txbuffer[1] = regval;
 
-  msg[0].frequency = BMI270_I2C_FREQ;
+  msg[0].frequency = BME680_I2C_FREQ;
   msg[0].addr = BME680_ADDR;
   msg[0].flags = 0;
   msg[0].buffer = txbuffer;
@@ -646,9 +707,14 @@ static int bme680_putreg8(FAR struct bme680_dev_s *priv, uint8_t regaddr,
 
   return ret;
 #else
+  SPI_LOCK(priv->spi, true);
+
+  sninfo("regaddr: 0x%02x\n", regaddr);
+  sninfo("regval: 0x%02x\n", regval);
+  bme680_select_page(priv, regaddr);
+
   /* If SPI bus is shared then lock and configure it */
 
-  SPI_LOCK(priv->spi, true);
   bme680_configspi(priv->spi);
 
   /* Select the BME680 */
@@ -667,6 +733,8 @@ static int bme680_putreg8(FAR struct bme680_dev_s *priv, uint8_t regaddr,
   /* Unlock bus */
 
   SPI_LOCK(priv->spi, false);
+
+  return OK;
 #endif
 }
 
@@ -678,14 +746,13 @@ static int bme680_putreg8(FAR struct bme680_dev_s *priv, uint8_t regaddr,
  *
  ****************************************************************************/
 
-static int bme680_checkid(FAR struct bme680_sensor_dev_s *priv)
+static int bme680_checkid(FAR struct bme680_dev_s *priv)
 {
   uint8_t devid = 0;
 
   /* Read device ID */
 
-  devid = bme680_getreg8(priv, BME680_ID_REG_ADDR);
-  up_mdelay(1);
+  devid = bme680_getreg8(priv, BME680_ID_REG_ADDR_SPI);
   sninfo("devid: 0x%02x\n", devid);
 
   if (devid != (uint8_t)BME680_DEVID)
@@ -716,7 +783,7 @@ static int bme680_get_calib_data(FAR struct bme680_sensor_dev_s *priv)
 
   /* Get first part of the calibration data. */
 
-  ret = bme680_getregs(priv, BME680_COEFF_ADDR1, coeff,
+  ret = bme680_getregs(&priv->priv->base, BME680_COEFF_ADDR1, coeff,
                        BME680_COEFF_ADDR1_LEN);
   if (ret < 0)
     {
@@ -725,7 +792,7 @@ static int bme680_get_calib_data(FAR struct bme680_sensor_dev_s *priv)
 
   /* Concatenate the second part of the data to coeff */
 
-  ret = bme680_getregs(priv, BME680_COEFF_ADDR2,
+  ret = bme680_getregs(&priv->priv->base, BME680_COEFF_ADDR2,
                        &coeff[BME680_COEFF_ADDR1_LEN],
                        BME680_COEFF_ADDR2_LEN);
   if (ret < 0)
@@ -735,75 +802,75 @@ static int bme680_get_calib_data(FAR struct bme680_sensor_dev_s *priv)
 
   /* Get data */
 
-  priv->dev.calib.t1 = coeff[BME680_T1_MSB_REG] << 8
+  priv->priv->calib.t1 = coeff[BME680_T1_MSB_REG] << 8
                       | coeff[BME680_T1_LSB_REG];
-  priv->dev.calib.t2 = coeff[BME680_T2_MSB_REG] << 8
+  priv->priv->calib.t2 = coeff[BME680_T2_MSB_REG] << 8
                       | coeff[BME680_T2_LSB_REG];
-  priv->dev.calib.t3 = coeff[BME680_T3_REG];
+  priv->priv->calib.t3 = coeff[BME680_T3_REG];
 
 #ifndef CONFIG_BME680_DISABLE_PRESS_MEAS
-  priv->dev.calib.p1 = coeff[BME680_P1_MSB_REG] << 8
+  priv->priv->calib.p1 = coeff[BME680_P1_MSB_REG] << 8
                       | coeff[BME680_P1_LSB_REG];
-  priv->dev.calib.p2 = coeff[BME680_P2_MSB_REG] << 8
+  priv->priv->calib.p2 = coeff[BME680_P2_MSB_REG] << 8
                       | coeff[BME680_P2_LSB_REG];
-  priv->dev.calib.p3 = coeff[BME680_P3_REG];
-  priv->dev.calib.p4 = coeff[BME680_P4_MSB_REG] << 8
+  priv->priv->calib.p3 = coeff[BME680_P3_REG];
+  priv->priv->calib.p4 = coeff[BME680_P4_MSB_REG] << 8
                       | coeff[BME680_P4_LSB_REG];
-  priv->dev.calib.p5 = coeff[BME680_P5_MSB_REG] << 8
+  priv->priv->calib.p5 = coeff[BME680_P5_MSB_REG] << 8
                       | coeff[BME680_P5_LSB_REG];
-  priv->dev.calib.p6 = coeff[BME680_P6_REG];
-  priv->dev.calib.p7 = coeff[BME680_P7_REG];
-  priv->dev.calib.p8 = coeff[BME680_P8_MSB_REG] << 8
+  priv->priv->calib.p6 = coeff[BME680_P6_REG];
+  priv->priv->calib.p7 = coeff[BME680_P7_REG];
+  priv->priv->calib.p8 = coeff[BME680_P8_MSB_REG] << 8
                       | coeff[BME680_P8_LSB_REG];
-  priv->dev.calib.p9 = coeff[BME680_P9_MSB_REG] << 8
+  priv->priv->calib.p9 = coeff[BME680_P9_MSB_REG] << 8
                       | coeff[BME680_P9_LSB_REG];
-  priv->dev.calib.p10 = coeff[BME680_P10_REG];
+  priv->priv->calib.p10 = coeff[BME680_P10_REG];
 #endif /* !CONFIG_BME680_DISABLE_PRESS_MEAS */
 
 #ifndef CONFIG_BME680_DISABLE_HUM_MEAS
-  priv->dev.calib.h1 = (uint16_t)(((uint16_t)coeff[BME680_H1_MSB_REG] << 4)
+  priv->priv->calib.h1 = (uint16_t)(((uint16_t)coeff[BME680_H1_MSB_REG] << 4)
                       | (coeff[BME680_H1_LSB_REG] & BME680_BIT_H1_DATA_MSK));
-  priv->dev.calib.h2 = (uint16_t)(((uint16_t)coeff[BME680_H2_MSB_REG] << 4)
+  priv->priv->calib.h2 = (uint16_t)(((uint16_t)coeff[BME680_H2_MSB_REG] << 4)
                       | ((coeff[BME680_H2_LSB_REG]) >> 4));
-  priv->dev.calib.h3 = coeff[BME680_H3_REG];
-  priv->dev.calib.h4 = coeff[BME680_H4_REG];
-  priv->dev.calib.h5 = coeff[BME680_H5_REG];
-  priv->dev.calib.h6 = coeff[BME680_H6_REG];
-  priv->dev.calib.h7 = coeff[BME680_H7_REG];
+  priv->priv->calib.h3 = coeff[BME680_H3_REG];
+  priv->priv->calib.h4 = coeff[BME680_H4_REG];
+  priv->priv->calib.h5 = coeff[BME680_H5_REG];
+  priv->priv->calib.h6 = coeff[BME680_H6_REG];
+  priv->priv->calib.h7 = coeff[BME680_H7_REG];
 #endif /* !CONFIG_BME680_DISABLE_HUM_MEAS */
 
 #ifndef CONFIG_BME680_DISABLE_GAS_MEAS
 
   /* Gas-related coefficients */
 
-  priv->dev.calib.gh1 = coeff[BME680_GH1_REG];
-  priv->dev.calib.gh2 = coeff[BME680_GH2_MSB_REG] << 8
+  priv->priv->calib.gh1 = coeff[BME680_GH1_REG];
+  priv->priv->calib.gh2 = coeff[BME680_GH2_MSB_REG] << 8
                       | coeff[BME680_GH2_LSB_REG];
-  priv->dev.calib.gh3 = coeff[BME680_GH3_REG];
+  priv->priv->calib.gh3 = coeff[BME680_GH3_REG];
 
-  ret = bme680_getregs(priv, BME680_RES_HEAT_RANGE_ADDR, &temp_val, 1);
+  ret = bme680_getregs(&priv->priv->base, BME680_RES_HEAT_RANGE_ADDR, &temp_val, 1);
   if (ret < 0)
     {
       return ret;
     }
 
-  priv->dev.calib.res_heat_range = ((temp_val & BME680_RHRANGE_MSK)) / 16;
+  priv->priv->calib.res_heat_range = ((temp_val & BME680_RHRANGE_MSK)) / 16;
 
-  ret = bme680_getregs(priv, BME680_RES_HEAT_VAL_ADDR, &temp_val, 1);
+  ret = bme680_getregs(&priv->priv->base, BME680_RES_HEAT_VAL_ADDR, &temp_val, 1);
   if (ret < 0)
     {
       return ret;
     }
 
-  priv->dev.calib.res_heat_val = (int8_t)temp_val;
+  priv->priv->calib.res_heat_val = (int8_t)temp_val;
 
-  ret = bme680_getregs(priv, BME680_RANGE_SW_ERR_ADDR, &temp_val, 1);
+  ret = bme680_getregs(&priv->priv->base, BME680_RANGE_SW_ERR_ADDR, &temp_val, 1);
   if (ret < 0)
     {
       return ret;
     }
 
-  priv->dev.calib.range_sw_err = ((int8_t)temp_val
+  priv->priv->calib.range_sw_err = ((int8_t)temp_val
                                  & (int8_t)BME680_RSERROR_MSK) / 16;
 
 #endif /* !CONFIG_BME680_DISABLE_GAS_MEAS */
@@ -827,7 +894,7 @@ static int bme680_set_mode(FAR struct bme680_sensor_dev_s *priv, uint8_t mode)
 
   /* Get current sensor mode */
 
-  ret = bme680_getregs(priv, BME680_CTRL_MEAS_ADDR, &regval, 1);
+  ret = bme680_getregs(&priv->priv->base, BME680_CTRL_MEAS_ADDR, &regval, 1);
 
   if (ret < 0)
     {
@@ -841,21 +908,21 @@ static int bme680_set_mode(FAR struct bme680_sensor_dev_s *priv, uint8_t mode)
       regval &= (uint8_t)(~BME680_MODE_MSK);
       regval |= (mode & BME680_MODE_MSK);
 
-      ret = bme680_putreg8(priv, BME680_CTRL_MEAS_ADDR, regval);
+      ret = bme680_putreg8(&priv->priv->base, BME680_CTRL_MEAS_ADDR, regval);
 
       if (ret < 0)
         {
           return ret;
         }
 
-      ret = bme680_getregs(priv, BME680_CTRL_MEAS_ADDR, &regval, 1);
+      ret = bme680_getregs(&priv->priv->base, BME680_CTRL_MEAS_ADDR, &regval, 1);
 
       /* Check if the mode has changed and wait if it hasn't */
 
       while ((regval & BME680_MODE_MSK) != mode)
         {
           up_mdelay(100);
-          ret = bme680_getregs(priv, BME680_CTRL_MEAS_ADDR, &regval, 1);
+          ret = bme680_getregs(&priv->priv->base, BME680_CTRL_MEAS_ADDR, &regval, 1);
         }
     }
 
@@ -872,7 +939,7 @@ static int bme680_set_mode(FAR struct bme680_sensor_dev_s *priv, uint8_t mode)
 
 static int bme680_set_oversamp(FAR struct bme680_sensor_dev_s *priv)
 {
-  struct bme680_config_s config = priv->dev.config;
+  struct bme680_config_s config = priv->priv->config;
 
   int ret;
   uint8_t regval;
@@ -881,13 +948,13 @@ static int bme680_set_oversamp(FAR struct bme680_sensor_dev_s *priv)
   /* Set humidity oversampling */
 
   regval = config.hum_os & BME680_OSH_MSK;
-  ret = bme680_putreg8(priv, BME680_CTRL_HUM_ADDR, regval);
+  ret = bme680_putreg8(&priv->priv->base, BME680_CTRL_HUM_ADDR, regval);
 #endif
 
   /* Set temperature and pressure oversampling */
 
   regval = 0;
-  ret = bme680_getregs(priv, BME680_CTRL_MEAS_ADDR, &regval, 1);
+  ret = bme680_getregs(&priv->priv->base, BME680_CTRL_MEAS_ADDR, &regval, 1);
 
   if (ret < 0)
     {
@@ -901,7 +968,7 @@ static int bme680_set_oversamp(FAR struct bme680_sensor_dev_s *priv)
   regval |= ((config.press_os << 2) & BME680_OSP_MSK);
 #endif
 
-  ret = bme680_putreg8(priv, BME680_CTRL_MEAS_ADDR, regval);
+  ret = bme680_putreg8(&priv->priv->base, BME680_CTRL_MEAS_ADDR, regval);
 
   if (ret < 0)
     {
@@ -918,7 +985,7 @@ static int bme680_push_press_data(FAR struct bme680_sensor_dev_s *priv,
   struct sensor_baro press_data;
   int ret;
 
-  struct sensor_lowerhalf_s lower = priv->dev.lower[BME680_PRESS_IDX];
+  struct sensor_lowerhalf_s lower = priv->priv[BME680_PRESS_IDX].lower;
 
   press_data.timestamp = data->timestamp;
   press_data.temperature = data->temperature;
@@ -942,7 +1009,7 @@ static int bme680_push_temp_data(FAR struct bme680_sensor_dev_s *priv,
   struct sensor_temp temp_data;
   int ret;
 
-  struct sensor_lowerhalf_s lower = priv->dev.lower[BME680_TEMP_IDX];
+  struct sensor_lowerhalf_s lower = priv->priv[BME680_TEMP_IDX].lower;
 
   temp_data.timestamp = data->timestamp;
   temp_data.temperature = data->temperature;
@@ -966,7 +1033,8 @@ static int bme680_push_hum_data(FAR struct bme680_sensor_dev_s *priv,
   struct sensor_humi hum_data;
   int ret;
 
-  struct sensor_lowerhalf_s lower = priv->dev.lower[BME680_HUM_IDX];
+  struct sensor_lowerhalf_s lower = priv->priv[BME680_HUM_IDX].lower;
+
 
   hum_data.timestamp = data->timestamp;
   hum_data.humidity = data->humidity;
@@ -990,7 +1058,7 @@ static int bme680_push_gas_data(FAR struct bme680_sensor_dev_s *priv,
   struct sensor_gas gas_data;
   int ret;
 
-  struct sensor_lowerhalf_s lower = priv->dev.lower[BME680_GAS_IDX];
+  struct sensor_lowerhalf_s lower = priv->priv[BME680_GAS_IDX].lower;
 
   gas_data.timestamp = data->timestamp;
   gas_data.gas_resistance = data->gas_resistance / 1000.f;
@@ -1027,7 +1095,7 @@ static uint8_t calc_heater_res(FAR const struct bme680_sensor_dev_s *priv)
   int16_t temp;
   int16_t amb_temp;
 
-  struct bme680_sensor_s dev = priv->dev;
+  struct bme680_sensor_s dev = priv->priv[BME680_GAS_IDX];
 
   temp = dev.config.target_temp;
 
@@ -1060,7 +1128,7 @@ static uint8_t calc_heater_res(FAR const struct bme680_sensor_dev_s *priv)
 
 static uint8_t calc_heater_dur(FAR const struct bme680_sensor_dev_s *priv)
 {
-  uint16_t heat_dur = priv->dev.config.heater_duration;
+  uint16_t heat_dur = priv->priv[BME680_GAS_IDX].config.heater_duration;
   uint8_t gas_wait_val;
   uint8_t factor;
 
@@ -1093,13 +1161,13 @@ static int bme680_set_gas_config(FAR struct bme680_sensor_dev_s *priv)
   uint8_t heat_dur;
   uint8_t run_gas;
   uint8_t regval;
-  uint8_t nb_conv = priv->dev.config.nb_conv;
+  uint8_t nb_conv = priv->priv[BME680_GAS_IDX].config.nb_conv;
 
   /* Set heater resistance */
 
   heat_res = calc_heater_res(priv);
 
-  ret = bme680_putreg8(priv, (BME680_RES_HEAT_ADDR + nb_conv), heat_res);
+  ret = bme680_putreg8(&priv->priv->base, (BME680_RES_HEAT_ADDR + nb_conv), heat_res);
 
   if (ret < 0)
     {
@@ -1110,7 +1178,7 @@ static int bme680_set_gas_config(FAR struct bme680_sensor_dev_s *priv)
 
   heat_dur = calc_heater_dur(priv);
 
-  ret = bme680_putreg8(priv, (BME680_GAS_WAIT_ADDR + nb_conv), heat_dur);
+  ret = bme680_putreg8(&priv->priv->base, (BME680_GAS_WAIT_ADDR + nb_conv), heat_dur);
 
   if (ret < 0)
     {
@@ -1119,10 +1187,10 @@ static int bme680_set_gas_config(FAR struct bme680_sensor_dev_s *priv)
 
   /* Set nbconv and run_gas */
 
-  run_gas = priv->dev.config.target_temp ? 1 : 0;
+  run_gas = priv->priv[BME680_GAS_IDX].config.target_temp ? 1 : 0;
   regval = (run_gas << 4) | nb_conv;
 
-  ret = bme680_putreg8(priv, BME680_CTRL_GAS1, regval);
+  ret = bme680_putreg8(&priv->priv->base, BME680_CTRL_GAS1, regval);
 
   if (ret < 0)
     {
@@ -1150,7 +1218,7 @@ static int bme680_write_config(FAR struct bme680_sensor_dev_s *priv)
   uint8_t regval;
 #endif /* CONFIG_BME680_ENABLE_IIR_FILTER */
 
-  nxmutex_lock(&priv->dev_lock);
+  nxmutex_lock(&priv->lock);
 
   /* Before anything is written, make sure it is in sleep mode */
 
@@ -1174,7 +1242,7 @@ static int bme680_write_config(FAR struct bme680_sensor_dev_s *priv)
   /* Set filter */
 
   regval = priv->dev.config.filter_coef << 2;
-  ret = bme680_putreg8(priv, BME680_CONFIG_REG_ADDR, regval);
+  ret = bme680_putreg8(&priv->priv->base, BME680_CONFIG_REG_ADDR, regval);
 
   if (ret < 0)
     {
@@ -1193,12 +1261,12 @@ static int bme680_write_config(FAR struct bme680_sensor_dev_s *priv)
     }
 #endif /* !CONFIG_BME680_DISABLE_GAS_MEAS */
 
-  nxmutex_unlock(&priv->dev_lock);
+  nxmutex_unlock(&priv->lock);
   return OK;
 
 err_out:
   snerr("Failed to calibrate sensor.\n");
-  nxmutex_unlock(&priv->dev_lock);
+  nxmutex_unlock(&priv->lock);
   return ret;
 }
 
@@ -1209,7 +1277,7 @@ static float bme680_comp_temp(FAR struct bme680_sensor_dev_s *priv,
   float var2 = 0.0f;
   float calc_temp = 0.0f;
 
-  struct bme680_sensor_s dev = priv->dev;
+  struct bme680_sensor_s dev = priv->priv[BME680_TEMP_IDX];
 
   var1 = ((((float)adc_temp / 16384.0f) - ((float)dev.calib.t1 / 1024.0f))
        * ((float)dev.calib.t2));
@@ -1218,11 +1286,11 @@ static float bme680_comp_temp(FAR struct bme680_sensor_dev_s *priv,
         * (((float)adc_temp / 131072.0f) - ((float)dev.calib.t1 / 8192.0f)))
         * ((float)dev.calib.t3 * 16.0f));
 
-  priv->dev.calib.t_fine = (var1 + var2);
+  priv->priv[BME680_TEMP_IDX].calib.t_fine = (var1 + var2);
 
   /* Compensated temperature data */
 
-  calc_temp = (priv->dev.calib.t_fine) / 5120.0f;
+  calc_temp = (priv->priv[BME680_TEMP_IDX].calib.t_fine) / 5120.0f;
 
   return calc_temp;
 }
@@ -1236,7 +1304,7 @@ static float bme680_comp_press(FAR struct bme680_sensor_dev_s *priv,
   float var3 = 0.0f;
   float calc_pres = 0.0f;
 
-  struct bme680_sensor_s dev = priv->dev;
+  struct bme680_sensor_s dev = priv->priv[BME680_PRESS_IDX];
 
   var1 = (((float)dev.calib.t_fine / 2.0f) - 64000.0f);
   var2 = var1 * var1 * (((float)dev.calib.p6) / (131072.0f));
@@ -1275,7 +1343,7 @@ static float bme680_comp_hum(FAR struct bme680_sensor_dev_s *priv,
   float var4 = 0.0f;
   float temp_comp;
 
-  struct bme680_sensor_s dev = priv->dev;
+  struct bme680_sensor_s dev = priv->priv[BME680_HUM_IDX];
 
   /* Compensated temperature data */
 
@@ -1314,7 +1382,7 @@ static float bme680_calc_gas_res(FAR struct bme680_sensor_dev_s *priv,
   float calc_gas_res;
   float var1 = 0.0f;
 
-  struct bme680_sensor_s dev = priv->dev;
+  struct bme680_sensor_s dev = priv->priv[BME680_GAS_IDX];
 
   var1 = (1340.0f + (5.0f * dev.calib.range_sw_err))
         * const_array1[gas_range];
@@ -1359,7 +1427,7 @@ static int bme680_read_measurements(FAR struct bme680_sensor_dev_s *priv,
 
   uint8_t data_regs[BME680_DATA_LEN];
 
-  ret = bme680_getregs(priv, BME680_DATA_ADDR, data_regs, BME680_DATA_LEN);
+  ret = bme680_getregs(&priv->priv->base, BME680_DATA_ADDR, data_regs, BME680_DATA_LEN);
 
   if (ret < 0)
     {
@@ -1421,7 +1489,7 @@ static int bme680_read_measurements(FAR struct bme680_sensor_dev_s *priv,
       return -1;
     }
 
-  priv->dev.config.amb_temp = data->temperature; /* Update ambient temp */
+  priv->priv[BME680_TEMP_IDX].config.amb_temp = data->temperature; /* Update ambient temp */
 
   data->gas_resistance = bme680_calc_gas_res(priv, adc_gas_res, gas_range);
 #endif /* !CONFIG_BME680_DISABLE_GAS_MEAS */
@@ -1448,14 +1516,14 @@ static uint16_t bme680_get_tphg_dur(FAR struct bme680_sensor_dev_s *priv)
     0, 1, 2, 4, 8, 16
   };
 
-  meas_cycles = os_to_meas_cycles[priv->dev.config.temp_os];
+  meas_cycles = os_to_meas_cycles[priv->priv[BME680_TEMP_IDX].config.temp_os];
 
 #ifndef CONFIG_BME680_DISABLE_PRESS_MEAS
-  meas_cycles += os_to_meas_cycles[priv->dev.config.press_os];
+  meas_cycles += os_to_meas_cycles[priv->priv[BME680_PRESS_IDX].config.press_os];
 #endif
 
 #ifndef CONFIG_BME680_DISABLE_HUM_MEAS
-  meas_cycles += os_to_meas_cycles[priv->dev.config.hum_os];
+  meas_cycles += os_to_meas_cycles[priv->priv[BME680_HUM_IDX].config.hum_os];
 #endif
 
   /* TPH measurement duration */
@@ -1477,7 +1545,7 @@ static uint16_t bme680_get_tphg_dur(FAR struct bme680_sensor_dev_s *priv)
 #ifndef CONFIG_BME680_DISABLE_GAS_MEAS
   /* The remaining time should be used for heating */
 
-  duration += priv->dev.config.heater_duration;
+  duration += priv->priv[BME680_GAS_IDX].config.heater_duration;
 #endif
 
   return duration;
@@ -1487,8 +1555,11 @@ static int bme680_activate(FAR struct sensor_lowerhalf_s *lower,
                            FAR struct file *filep, bool enable)
 {
   int offset;
-  FAR struct bme680_sensor_s *dev;
-  FAR struct bme680_sensor_dev_s *priv;
+  FAR struct bme680_sensor_s     *priv  = NULL;
+  FAR struct bme680_sensor_dev_s *dev   = NULL;
+
+  priv = (FAR struct bme680_sensor_s *)lower;
+  dev = priv->dev;
 
   /* Get offset inside array of lowerhalfs */
 
@@ -1515,28 +1586,23 @@ static int bme680_activate(FAR struct sensor_lowerhalf_s *lower,
         break;
     }
 
-  dev = (FAR struct bme680_sensor_s *)
-        ((uintptr_t)lower - offset * sizeof(*lower));
-
-  priv = container_of(dev, FAR struct bme680_sensor_dev_s, dev);
-
   /* Wake the thread only once (the activate method will be called
    *  multiple times for the bme680 sub-sensors)
    */
 
   if (!priv->enabled && enable)
     {
-      dev->calibrated = false;
+      priv->calibrated = false;
       priv->enabled = enable;
 
       /* Wake up the polling thread */
-
-      nxsem_post(&priv->run);
-
+#ifdef CONFIG_SENSORS_BME680_POLL
+      nxsem_post(&dev->run);
+#endif
       return OK;
     }
 
-  priv->enabled = enable;
+    priv->enabled = enable;
 
   return OK;
 }
@@ -1556,7 +1622,7 @@ priv->interval = *interval;
 return OK;
 }
 
-#ifndef CONFIG_SENSORS_BMI270_POLL
+#ifndef CONFIG_SENSORS_BME680_POLL
 static int bme680_fetch(FAR struct sensor_lowerhalf_s *lower,
                         FAR struct file *filep,
                         FAR char *buffer, size_t buflen)
@@ -1564,7 +1630,8 @@ static int bme680_fetch(FAR struct sensor_lowerhalf_s *lower,
   FAR struct bme680_sensor_s *priv = NULL;
   priv = (FAR struct bme680_sensor_s *)lower;
 
-  return bme680_read_measurements(priv, buffer);
+  //return bme680_read_measurements(priv, buffer);
+  return 1;
 }
 #endif
 
@@ -1572,8 +1639,8 @@ static int bme680_calibrate(FAR struct sensor_lowerhalf_s *lower,
                             FAR struct file *filep, unsigned long arg)
 {
   int offset;
-  FAR struct bme680_sensor_s *dev;
-  FAR struct bme680_sensor_dev_s *priv;
+  FAR struct bme680_sensor_s     *priv  = NULL;
+  FAR struct bme680_sensor_dev_s *dev   = NULL;
   FAR struct bme680_config_s *calibval = (FAR struct bme680_config_s *)arg;
   int ret;
 
@@ -1602,10 +1669,8 @@ static int bme680_calibrate(FAR struct sensor_lowerhalf_s *lower,
         break;
     }
 
-  dev = (FAR struct bme680_sensor_s *)
-        ((uintptr_t)lower - offset * sizeof(*lower));
-
-  priv = container_of(dev, FAR struct bme680_sensor_dev_s, dev);
+  priv = (FAR struct bme680_sensor_s *)lower;
+  dev = priv->dev;
 
   /* Sanity checks */
 
@@ -1651,9 +1716,9 @@ static int bme680_calibrate(FAR struct sensor_lowerhalf_s *lower,
 
   /* Update config in priv */
 
-  memcpy(&priv->dev.config, calibval, sizeof(struct bme680_config_s));
+  memcpy(&priv->config, calibval, sizeof(struct bme680_config_s));
 
-  ret = bme680_write_config(priv);
+  ret = bme680_write_config(dev);
 
   if (ret < 0)
     {
@@ -1661,7 +1726,7 @@ static int bme680_calibrate(FAR struct sensor_lowerhalf_s *lower,
       return ret;
     }
 
-  priv->dev.calibrated = true;
+  priv->calibrated = true;
 
   return ret;
 }
@@ -1670,13 +1735,10 @@ static int bme680_control(FAR struct sensor_lowerhalf_s *lower,
                           FAR struct file *filep,
                           int cmd, unsigned long arg)
 {
-  FAR struct bme680_sensor_s *dev = container_of(lower,
-                                                 FAR struct bme680_sensor_s,
-                                                 lower);
-  FAR struct bme680_sensor_dev_s *priv = container_of(dev,
-                                               FAR struct bme680_sensor_dev_s,
-                                               dev);
+  FAR struct bme680_sensor_s     *priv  = NULL;
   int ret;
+
+  priv = (FAR struct bme680_sensor_s *)lower;
 
   switch (cmd)
     {
@@ -1685,7 +1747,7 @@ static int bme680_control(FAR struct sensor_lowerhalf_s *lower,
           /* Perform Soft Reset */
 
           uint8_t regval = 0xb6;
-          ret = bme680_putreg8(priv, BME680_RESET_REG_ADDR, regval);
+          ret = bme680_putreg8(&priv->base, BME680_RESET_REG_ADDR, regval);
 
           if (ret < 0)
             {
@@ -1717,7 +1779,7 @@ static int bme680_thread(int argc, char **argv)
     {
       int sensor;
 
-      if (!priv->enabled)
+      if (!priv->priv->enabled)
         {
           /* Wait for the sensor to be enabled */
 
@@ -1726,7 +1788,7 @@ static int bme680_thread(int argc, char **argv)
 
       /* No measurements are done unless the sensor is calibrated */
 
-      if (!priv->dev.calibrated)
+      if (!priv->priv->calibrated)
         {
           sninfo("The sensor is not calibrated!\n");
           goto thread_sleep;
@@ -1787,9 +1849,8 @@ int bme680_register(int devno, FAR struct i2c_master_s *i2c)
 int bme680_register(int devno, FAR struct spi_dev_s *spi)
 #endif
 {
-  //FAR struct sensor_lowerhalf_s *lower;
-  FAR struct bme680_dev_s *dev = NULL;
-  FAR struct bme680_sensor_dev_s *tmp = NULL;
+  FAR struct bme680_sensor_dev_s  *dev = NULL;
+  FAR struct bme680_sensor_s      *tmp = NULL;
 
 #ifdef CONFIG_SENSORS_BME680_POLL
   FAR char *argv[2];
@@ -1798,8 +1859,11 @@ int bme680_register(int devno, FAR struct spi_dev_s *spi)
   int ret = OK;
   int i;
 
-  //DEBUGASSERT(i2c != NULL);
-
+#ifdef CONFIG_SENSORS_BME680_I2C
+  DEBUGASSERT(i2c != NULL);
+#else
+  DEBUGASSERT(spi != NULL);
+#endif
   /* Initialize the device structure. */
 
   dev = (FAR struct bme680_sensor_dev_s *)kmm_malloc(sizeof(*dev));
@@ -1810,9 +1874,9 @@ int bme680_register(int devno, FAR struct spi_dev_s *spi)
     }
 
   memset(dev, 0, sizeof(*dev));
-  nxmutex_init(&priv->dev_lock);
+  nxmutex_init(&dev->lock);
 #ifdef CONFIG_SENSORS_BME680_POLL
-  nxsem_init(&priv->run, 0, 0);
+  nxsem_init(&dev->run, 0, 0);
 #endif
 
   tmp = &dev->priv[BME680_PRESS_IDX];
@@ -1825,13 +1889,13 @@ int bme680_register(int devno, FAR struct spi_dev_s *spi)
 #endif
   tmp->lower.ops = &g_sensor_ops;
   tmp->lower.type = SENSOR_TYPE_BAROMETER;
-  tmp->lower.buffer = 1;
+  tmp->lower.nbuffer = 1;
 #ifdef CONFIG_SENSORS_BME680_POLL
   tmp->enabled = false;
   tmp->interval = CONFIG_SENSORS_BME680_POLL_INTERVAL;
 #endif
 
-  ret = sensor_register(lower, devno);
+  ret = sensor_register(&tmp->lower, devno);
   if (ret < 0)
     {
       snerr("ERROR: Failed to register barometer driver (err = %d)\n",
@@ -1841,7 +1905,7 @@ int bme680_register(int devno, FAR struct spi_dev_s *spi)
 
   /* Get Calibration Data */
 
-  ret = bme680_get_calib_data(priv);
+  ret = bme680_get_calib_data(tmp->dev);
 
   if (ret < 0)
     {
@@ -1849,6 +1913,7 @@ int bme680_register(int devno, FAR struct spi_dev_s *spi)
       goto err_init;
     }
 
+#if 0
 #ifndef CONFIG_BME680_DISABLE_PRESS_MEAS
   /* Register the barometer driver */
 
@@ -1911,27 +1976,29 @@ int bme680_register(int devno, FAR struct spi_dev_s *spi)
     }
 #endif
 
-#ifdef CONFIG_SENSORS_BME680_SPI
-  /* BMI270 detects communication bus is SPI by rising edge of CS. */
+#endif
 
-  bme680_getreg8(&tmp->base, 0x00);
-  bme680_getreg8(&tmp->base, 0x00);
-  up_udelay(200);
+#ifdef CONFIG_SENSORS_BME680_SPI
+  /* BME680 detects communication bus is SPI by rising edge of CS. */
+
+  //bme680_getreg8(&tmp->base, 0x00);
+  bme680_getreg8(&tmp->base, BME680_STATUS_REG_ADDR);
+  //up_udelay(200);
 #endif
 
   /* Check Device ID */
 
-  ret = bme680_checkid(priv);
+  ret = bme680_checkid(&tmp->base);
   if (ret < 0)
     {
       snerr("ERROR: Wrong device ID!\n");
-      goto err_init;
+      goto err_register;
     }
 
 #ifdef CONFIG_SENSORS_BME680_POLL
   /* Create thread for polling sensor data */
 
-  snprintf(arg1, 16, "%p", priv);
+  snprintf(arg1, 16, "%p", dev);
   argv[0] = arg1;
   argv[1] = NULL;
   ret = kthread_create("bme680_thread", SCHED_PRIORITY_DEFAULT,
@@ -1950,12 +2017,14 @@ int bme680_register(int devno, FAR struct spi_dev_s *spi)
 err_register:
   for (i = 0; i < BME680_SENSORS_COUNT; i++)
     {
-      sensor_unregister(&priv->dev.lower[i], devno);
+      sensor_unregister(&dev->priv[i].lower, devno);
     }
 
 err_init:
-  nxsem_destroy(&priv->run);
-  nxmutex_destroy(&priv->dev_lock);
-  kmm_free(priv);
+#ifdef CONFIG_SENSORS_BME680_POLL
+  nxsem_destroy(&dev->run);
+#endif
+  nxmutex_destroy(&dev->lock);
+  kmm_free(dev);
   return ret;
 }

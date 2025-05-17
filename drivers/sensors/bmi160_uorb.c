@@ -475,7 +475,7 @@ static void bmi160_accel_worker(FAR void *arg)
              bmi160_accel_worker, priv,
              priv->interval / USEC_PER_TICK);
 
-  bmi160_getregs(&priv->dev, BMI160_DATA_14, (FAR uint8_t *)&p, 6);
+  bmi160_getregs(&priv->dev, BMI160_DATA_8, (FAR uint8_t *)&p, 6);
   accel.x = p.x;
   accel.y = p.y;
   accel.z = p.z;
@@ -522,7 +522,7 @@ static void bmi160_gyro_worker(FAR void *arg)
              bmi160_gyro_worker, priv,
              priv->interval / USEC_PER_TICK);
 
-  bmi160_getregs(&priv->dev, BMI160_DATA_8, (FAR uint8_t *)&p, 6);
+  bmi160_getregs(&priv->dev, BMI160_DATA_14, (FAR uint8_t *)&p, 6);
   gyro.x = p.x;
   gyro.y = p.y;
   gyro.z = p.z;

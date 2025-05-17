@@ -211,7 +211,16 @@ uint16_t can_datahandler(FAR struct net_driver_s *dev,
 
   /* Concat the iob to readahead */
 
-  ret = iob_tryadd_queue(iob, &conn->readahead);
+#ifdef CONFIG_NET_CANPROTO_OPTIONS
+  canid_t can_id;
+  iob_copyout((uint8_t *)&can_id, iob, sizeof(canid_t), 0);
+  if (can_recv_filter(conn, can_id) == 0)
+    {
+      goto errout;
+    }
+#endif
+
+  ret = iob_tryadd_queue(iob, &conn->readahead); // not copied, isn't the iob NULL later on?
   if (ret >= 0)
     {
 #ifdef CONFIG_NET_CAN_NOTIFIER

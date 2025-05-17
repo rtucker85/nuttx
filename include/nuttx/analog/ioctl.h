@@ -126,6 +126,9 @@
 #define AN_MCP47X6_FIRST (AN_ADS1115_FIRST + AN_ADS1115_NCMDS)
 #define AN_MCP47X6_NCMDS 3
 
+#define AN_ADS131_FIRST (AN_MCP47X6_FIRST + AN_MCP47X6_NCMDS)
+#define AN_ADS131_NCMDS 2
+
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/

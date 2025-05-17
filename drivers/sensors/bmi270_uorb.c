@@ -39,6 +39,7 @@
 #include <nuttx/compiler.h>
 #include <nuttx/nuttx.h>
 #include <nuttx/kthread.h>
+//#include <nuttx/wqueue.h>
 
 #include <nuttx/sensors/sensor.h>
 #include <nuttx/sensors/ioctl.h>
@@ -49,7 +50,7 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define CONSTANTS_ONE_G 9.8f
+#define CONSTANTS_ONE_G 9.806650f
 
 /****************************************************************************
  * Private Types
@@ -68,6 +69,7 @@ struct bmi270_sensor_s
   uint64_t                   last_update;
   float                      scale;
   FAR void                  *dev;
+  struct work_s              work;
   bool                       enabled;
 #ifdef CONFIG_SENSORS_BMI270_POLL
   uint32_t                   interval;
@@ -157,6 +159,7 @@ static int bmi270_activate(FAR struct sensor_lowerhalf_s *lower,
   priv = (FAR struct bmi270_sensor_s *)lower;
   dev = priv->dev;
 
+#if 1
   nxmutex_lock(&dev->lock);
 
   tmp = (dev->priv[BMI270_ACCEL_IDX].enabled +
@@ -201,7 +204,19 @@ static int bmi270_activate(FAR struct sensor_lowerhalf_s *lower,
       bmi270_putreg8(&priv->base, BMI270_PWR_CTRL, 0);
       up_mdelay(30);
     }
-
+#else
+  if (enable)
+  {
+    bmi270_set_normal_imu(&priv->base);
+    work_queue(HPWORK, &priv->work,
+      bmi270_thread, priv,
+      priv->interval / USEC_PER_TICK);
+  }
+  else
+  {
+    bmi270_putreg8(&priv->base, BMI270_PWR_CTRL, 0);
+  }
+#endif
   return ret;
 }
 
@@ -235,6 +250,7 @@ static int bmi270_fetch(FAR struct sensor_lowerhalf_s *lower,
 {
   FAR struct bmi270_sensor_s *priv = NULL;
   int16_t                     data[3];
+  int16_t                     temp_data;
   int                         ret  = OK;
 
   priv = (FAR struct bmi270_sensor_s *)lower;
@@ -248,10 +264,14 @@ static int bmi270_fetch(FAR struct sensor_lowerhalf_s *lower,
           bmi270_getregs(&priv->base, BMI270_DATA_8,
                          (FAR uint8_t *)data, 6);
 
-          accel.timestamp = sensor_get_timestamp();
-          accel.x         = data[0] * priv->scale;
-          accel.y         = data[1] * priv->scale;
-          accel.z         = data[2] * priv->scale;
+          bmi270_getregs(&priv->base, BMI270_TEMPERATURE_0,
+                         (FAR uint8_t *)&temp_data, 2);
+
+          accel.timestamp   = sensor_get_timestamp();
+          accel.x           = data[0] * priv->scale;
+          accel.y           = data[1] * priv->scale;
+          accel.z           = data[2] * priv->scale;
+          accel.temperature = (float)((((float)((int16_t)temp_data)) / 512.0) + 23.0);
 
           memcpy(buffer, &accel, sizeof(accel));
           ret = sizeof(accel);
@@ -266,10 +286,14 @@ static int bmi270_fetch(FAR struct sensor_lowerhalf_s *lower,
           bmi270_getregs(&priv->base, BMI270_DATA_14,
                          (FAR uint8_t *)data, 6);
 
-          gyro.timestamp = sensor_get_timestamp();
-          gyro.x         = data[0] * priv->scale;
-          gyro.y         = data[1] * priv->scale;
-          gyro.z         = data[2] * priv->scale;
+          bmi270_getregs(&priv->base, BMI270_TEMPERATURE_0,
+                         (FAR uint8_t *)&temp_data, 2);
+
+          gyro.timestamp   = sensor_get_timestamp();
+          gyro.x           = data[0] * priv->scale;
+          gyro.y           = data[1] * priv->scale;
+          gyro.z           = data[2] * priv->scale;
+          gyro.temperature = (float)((((float)((int16_t)temp_data)) / 512.0) + 23.0);
 
           memcpy(buffer, &gyro, sizeof(gyro));
           ret = sizeof(gyro);
@@ -433,7 +457,7 @@ static int bmi270_gyro_scale(FAR struct bmi270_sensor_s *priv,
 
 static void bmi270_accel_data(FAR struct bmi270_sensor_s *priv,
                               FAR int16_t *buf,
-                              FAR int16_t *temp_data)
+                              float temp)
 {
   FAR struct sensor_lowerhalf_s *lower = &priv->lower;
   struct sensor_accel            accel;
@@ -450,7 +474,7 @@ static void bmi270_accel_data(FAR struct bmi270_sensor_s *priv,
   accel.x           = buf[0] * priv->scale;
   accel.y           = buf[1] * priv->scale;
   accel.z           = buf[2] * priv->scale;
-  accel.temperature = (float)((((float)((int16_t)temp_data[0])) / 512.0) + 23.0);
+  accel.temperature = temp;
 
   lower->push_event(lower->priv, &accel, sizeof(accel));
 }
@@ -472,7 +496,7 @@ static void bmi270_accel_data(FAR struct bmi270_sensor_s *priv,
 
 static void bmi270_gyro_data(FAR struct bmi270_sensor_s *priv,
                              FAR int16_t *buf,
-                             FAR int16_t *temp_data)
+                             float temp)
 {
   FAR struct sensor_lowerhalf_s *lower = &priv->lower;
   struct sensor_gyro             gyro;
@@ -489,7 +513,7 @@ static void bmi270_gyro_data(FAR struct bmi270_sensor_s *priv,
   gyro.x           = buf[0] * priv->scale;
   gyro.y           = buf[1] * priv->scale;
   gyro.z           = buf[2] * priv->scale;
-  gyro.temperature = (float)((((float)((int16_t)temp_data[0])) / 512.0) + 23.0);
+  gyro.temperature = temp;
 
   lower->push_event(lower->priv, &gyro, sizeof(gyro));
 }
@@ -507,6 +531,7 @@ static void bmi270_gyro_data(FAR struct bmi270_sensor_s *priv,
  ****************************************************************************/
 
 static int bmi270_thread(int argc, FAR char **argv)
+//static void bmi270_thread(FAR void *arg)
 {
   FAR struct bmi270_sensor_dev_s *dev
       = (FAR struct bmi270_sensor_dev_s *)((uintptr_t)strtoul(argv[1], NULL,
@@ -516,8 +541,10 @@ static int bmi270_thread(int argc, FAR char **argv)
   unsigned long               min_interval;
   int16_t                     accel_data[6];
   int16_t                     temp_data[1];
+  float                       temp;
   int                         ret;
 
+#if 1
   while (true)
     {
       if ((!accel->enabled) && (!gyro->enabled))
@@ -536,18 +563,22 @@ static int bmi270_thread(int argc, FAR char **argv)
       bmi270_getregs(&gyro->base, BMI270_DATA_8, (FAR uint8_t *)accel_data, 12);
       bmi270_getregs(&gyro->base, BMI270_TEMPERATURE_0, (FAR uint8_t *)temp_data, 2);
 
+      //temp = (float)((((float)((int16_t)temp_data[0])) / 512.0) + 23.0);
+      const float lsb = 0.001953125f;
+      temp = 23.0f + (int16_t)temp_data[0] * lsb;
+
       /* Read accel */
 
       if (accel->enabled)
         {
-          bmi270_accel_data(accel, &accel_data[0], temp_data);
+          bmi270_accel_data(accel, &accel_data[0], temp);
         }
 
       /* Read gyro */
 
       if (gyro->enabled)
         {
-          bmi270_gyro_data(gyro, &accel_data[3], temp_data);
+          bmi270_gyro_data(gyro, &accel_data[3], temp);
         }
 
       /* Sleeping thread before fetching the next sensor data */
@@ -557,6 +588,11 @@ static int bmi270_thread(int argc, FAR char **argv)
     }
 
   return OK;
+#else
+  work_queue(HPWORK, &priv->work,
+    bmi270_thread, priv,
+    priv->interval / USEC_PER_TICK);
+#endif
 }
 #endif
 
@@ -688,6 +724,22 @@ int bmi270_register_uorb(int devno, FAR struct spi_dev_s *spi)
   bmi270_accel_scale(&dev->priv[BMI270_ACCEL_IDX], 2);
   bmi270_gyro_scale(&dev->priv[BMI270_GYRO_IDX], 2000);
 
+#if 0
+  volatile uint8_t regval;
+  bmi270_putreg8(&tmp->base, BMI270_INT1_IO_CTRL, 0x0A);
+  regval = bmi270_getreg8(&tmp->base, BMI270_INT1_IO_CTRL);
+  //_info("BMI270_INT1_IO_CTRL: 0x%02x\n", regval);
+
+  bmi270_putreg8(&tmp->base, BMI270_INT1_MAP_FEAT, 0x40);
+  regval = bmi270_getreg8(&tmp->base, BMI270_INT1_MAP_FEAT);
+  //_info("BMI270_INT1_MAP_FEAT: 0x%02x\n", regval);
+
+  bmi270_putreg8(&tmp->base, BMI270_INT_MAP_DATA, 0x04);
+  regval = bmi270_getreg8(&tmp->base, BMI270_INT_MAP_DATA);
+  //_info("BMI270_INT_MAP_DATA: 0x%02x\n", regval);
+#endif
+
+#if 1
 #ifdef CONFIG_SENSORS_BMI270_POLL
   /* Create thread for polling sensor data */
 
@@ -703,6 +755,7 @@ int bmi270_register_uorb(int devno, FAR struct spi_dev_s *spi)
     {
       goto thr_err;
     }
+#endif
 #endif
 
   return ret;

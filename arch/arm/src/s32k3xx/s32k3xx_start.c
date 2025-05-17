@@ -42,8 +42,8 @@
 #  include "s32k3xx_userspace.h"
 #endif
 
-#include "hardware/s32k3xx_mcm.h"
-#include "hardware/s32k3xx_mc_me.h"
+//#include "hardware/s32k3xx_mcm.h"
+//#include "hardware/s32k3xx_mc_me.h"
 #include "s32k3xx_clockconfig.h"
 #include "s32k3xx_lowputc.h"
 #include "s32k3xx_serial.h"
@@ -143,7 +143,7 @@ void s32k3xx_start(void)
    * but if don't set init value here again
    * then on a cold boot we go into a bootloop somehow
    */
-#if 1
+
   dest = (uint64_t *)SRAM_BASE_ADDR;
   while (dest < (uint64_t *)SRAM_INIT_END_ADDR)
     {
@@ -210,8 +210,8 @@ void s32k3xx_start(void)
    * output as soon as possible.  NOTE: That this logic must not assume that
    * .bss or .data have been initialized.
    */
-#endif
-  DEBUGVERIFY(s32k3xx_clockconfig(&g_initial_clkconfig));
+
+  DEBUGVERIFY(s32k3xx_clockconfig());
   s32k3xx_lowsetup();
   showprogress('B');
 

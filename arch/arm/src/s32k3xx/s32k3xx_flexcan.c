@@ -67,7 +67,8 @@
  * is required.
  */
 
-#define CANWORK LPWORK
+#define CANWORK    HPWORK
+#define CANRCVWORK LPWORK
 
 /* CONFIG_S32K3XX_FLEXCAN_NETHIFS determines the number of physical
  * interfaces that will be supported.
@@ -446,7 +447,8 @@ struct s32k3xx_driver_s
 #ifdef TX_TIMEOUT_WQ
   struct wdog_s txtimeout[TXMBCOUNT]; /* TX timeout timer */
 #endif
-  struct work_s irqwork;        /* For deferring interrupt work to the wq */
+  struct work_s rxavailwork;        /* For deferring interrupt work to the wq */
+  struct work_s txdonework;        /* For deferring interrupt work to the wq */
   struct work_s pollwork;       /* For deferring poll work to the work wq */
 #ifdef CONFIG_NET_CAN_CANFD
   struct canfd_frame *txdesc;   /* A pointer to the list of TX descriptor */
@@ -673,6 +675,7 @@ static uint32_t s32k3xx_waitmcr_change(uint32_t base,
 /* Interrupt handling */
 
 static void s32k3xx_receive(struct s32k3xx_driver_s *priv, uint32_t flags);
+static void s32k3xx_rxavail_work(void *arg);
 static void s32k3xx_txdone_work(void *arg);
 static void s32k3xx_txdone(struct s32k3xx_driver_s *priv);
 
@@ -1182,6 +1185,41 @@ static void s32k3xx_txdone(struct s32k3xx_driver_s *priv)
 }
 
 /****************************************************************************
+ * Function: s32k3xx_rxavail_work
+ *
+ * Description:
+ *
+ *
+ * Input Parameters:
+ *   priv  - Reference to the driver state structure
+ *
+ * Returned Value:
+ *   None
+ *
+ * Assumptions:
+ *   Global interrupts are disabled by the watchdog logic.
+ *   We are not in an interrupt context so that we can lock the network.
+ *
+ ****************************************************************************/
+
+ static void s32k3xx_rxavail_work(void *arg)
+ {
+  struct s32k3xx_driver_s *priv = (struct s32k3xx_driver_s *)arg;
+
+  uint32_t flags;
+  flags  = getreg32(priv->base + S32K3XX_CAN_IFLAG1_OFFSET);
+  flags &= IFLAG1_RX;
+
+  net_lock();
+  s32k3xx_receive(priv, flags);
+  net_unlock();
+
+  /* Mask MB again */
+
+  modifyreg32(priv->base + S32K3XX_CAN_IMASK1_OFFSET, 0, IFLAG1_RX);
+ }
+
+/****************************************************************************
  * Function: s32k3xx_txdone_work
  *
  * Description:
@@ -1246,11 +1284,8 @@ static int s32k3xx_flexcan_interrupt(int irq, void *context, void *arg)
 
       if (flags)
         {
-          /* Process immediately since scheduling a workqueue is too slow
-           * which causes us to drop CAN frames
-           */
-
-          s32k3xx_receive(priv, flags);
+          modifyreg32(priv->base + S32K3XX_CAN_IMASK1_OFFSET, IFLAG1_RX, 0);
+          work_queue(CANRCVWORK, &priv->rxavailwork, s32k3xx_rxavail_work, priv, 0);
         }
 
       flags  = getreg32(priv->base + S32K3XX_CAN_IFLAG1_OFFSET);
@@ -1262,10 +1297,8 @@ static int s32k3xx_flexcan_interrupt(int irq, void *context, void *arg)
            * condition here.
            */
 
-          flags  = getreg32(priv->base + S32K3XX_CAN_IMASK1_OFFSET);
-          flags &= ~(IFLAG1_TX);
-          putreg32(flags, priv->base + S32K3XX_CAN_IMASK1_OFFSET);
-          work_queue(CANWORK, &priv->irqwork, s32k3xx_txdone_work, priv, 0);
+          modifyreg32(priv->base + S32K3XX_CAN_IMASK1_OFFSET, IFLAG1_TX, 0);
+          work_queue(CANWORK, &priv->txdonework, s32k3xx_txdone_work, priv, 0);
         }
     }
 
@@ -1354,7 +1387,7 @@ static void s32k3xx_txtimeout_expiry(wdparm_t arg)
   /* Schedule to perform the TX timeout processing on the worker thread
    */
 
-  work_queue(CANWORK, &priv->irqwork, s32k3xx_txtimeout_work, priv, 0);
+  work_queue(CANWORK, &priv->txdonework, s32k3xx_txtimeout_work, priv, 0);
 }
 
 #endif
@@ -1982,10 +2015,10 @@ static void s32k3xx_reset(struct s32k3xx_driver_s *priv)
 
   /* Filtering catchall */
 
-  putreg32(0x3fffffff, priv->base + S32K3XX_CAN_RX14MASK_OFFSET);
-  putreg32(0x3fffffff, priv->base + S32K3XX_CAN_RX15MASK_OFFSET);
-  putreg32(0x3fffffff, priv->base + S32K3XX_CAN_RXMGMASK_OFFSET);
-  putreg32(0x0, priv->base + S32K3XX_CAN_RXFGMASK_OFFSET);
+  //putreg32(0x3fffffff, priv->base + S32K3XX_CAN_RX14MASK_OFFSET);
+  //putreg32(0x3fffffff, priv->base + S32K3XX_CAN_RX15MASK_OFFSET);
+  //putreg32(0x3fffffff, priv->base + S32K3XX_CAN_RXMGMASK_OFFSET);
+  //putreg32(0x256, priv->base + S32K3XX_CAN_RXFGMASK_OFFSET);
 }
 
 /****************************************************************************

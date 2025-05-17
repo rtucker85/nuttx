@@ -399,7 +399,7 @@ Below is the version of ``mkdefines.sh`` used in this demo:
    # Extract all of the undefined symbols from the partially linked file and create a
    # list of sorted, unique undefined variable names.
    
-   varlist=`nm $relprog | fgrep ' U ' | sed -e "s/^[ ]*//g" | cut -d' ' -f2 | sort - | uniq`
+   varlist=`nm $relprog | grep -F ' U ' | sed -e "s/^[ ]*//g" | cut -d' ' -f2 | sort - | uniq`
    
    # Now output the linker script that provides a value for all of the undefined symbols
    

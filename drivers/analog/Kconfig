@@ -62,6 +62,26 @@ config ADC_ADS1242
 		via ioctl calls. However, it does not yet implement the standard ADC
 		interface.
 
+config ADC_ADS131M0X
+	bool "TI ADS131M0x support"
+	default n
+	select SPI
+	---help---
+		Enable driver support for the ADS131M0x 24-Bit SPI powered ADC.
+
+		This driver supports reading the ADC conversion result as well as
+		configuring the ADC, setting the input channel, etc. is implemented
+		via ioctl calls. However, it does not yet implement the standard ADC
+		interface.
+
+if ADC_ADS131M0X
+
+config DRV_ADS131_DEBUG
+	bool "Enable ADS131 debug"
+	default n
+
+endif
+
 config ADC_ADS125X
 	bool "TI ADS1255/ADS1256 support"
 	default n

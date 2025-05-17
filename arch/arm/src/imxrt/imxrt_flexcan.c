@@ -1869,7 +1869,7 @@ static void imxrt_reset(struct imxrt_driver_s *priv)
   putreg32(0x3fffffff, priv->base + IMXRT_CAN_RX14MASK_OFFSET);
   putreg32(0x3fffffff, priv->base + IMXRT_CAN_RX15MASK_OFFSET);
   putreg32(0x3fffffff, priv->base + IMXRT_CAN_RXMGMASK_OFFSET);
-  putreg32(0x0, priv->base + IMXRT_CAN_RXFGMASK_OFFSET);
+  putreg32(0x256, priv->base + IMXRT_CAN_RXFGMASK_OFFSET);
 }
 
 /****************************************************************************

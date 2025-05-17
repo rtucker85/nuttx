@@ -250,6 +250,9 @@ int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
   uint32_t flags   = 0;
   uint16_t pktsize = 0;
   uint8_t llhdrlen = 0;
+#ifdef CONFIG_NET_MLD
+  bool supports_mld = true;
+#endif
   int devnum;
 #ifdef CONFIG_NETDEV_IFINDEX
   int ifindex;
@@ -296,6 +299,9 @@ int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
             dev->d_pktsize  = NET_CAN_PKTSIZE;
             devfmt          = NETDEV_CAN_FORMAT;
             flags           = IFF_NOARP;
+#ifdef CONFIG_NET_MLD
+            supports_mld    = false;
+#endif
             break;
 #endif
 
@@ -476,6 +482,10 @@ int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
       /* Configure the device for MLD support */
 
       mld_devinit(dev);
+      if (supports_mld)
+       {
+         mld_devinit(dev);
+       }
 #endif
 
 #ifdef NET_ICMPv6_HAVE_STACK

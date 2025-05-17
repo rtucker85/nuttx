@@ -39,7 +39,8 @@
 
 #include "s32k3xx_config.h"
 
-#include "s32k3xx_clocknames.h"
+//#include "s32k3xx_clocknames.h"
+#include "Clock_Ip_Types.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -146,7 +147,7 @@ struct peripheral_clock_config_s
    * values defined in the chip specific xxxxxx_configname.h header file.
    */
 
-  enum clock_names_e clkname;          /* Peripheral clock name */
+  Clock_Ip_NameType clkname;          /* Peripheral clock name */
   bool clkgate;                        /* Peripheral clock gate */
   peripheral_clock_source_t clksrc;    /* Peripheral clock source */
   enum peripheral_clock_frac_e frac;   /* Peripheral clock fractional value */
@@ -228,7 +229,7 @@ void s32k3xx_periphclocks(unsigned int count,
  *
  ****************************************************************************/
 
-int s32k3xx_get_pclkfreq(enum clock_names_e clkname, uint32_t *frequency);
+int s32k3xx_get_pclkfreq(Clock_Ip_NameType clkname, uint32_t *frequency);
 
 #undef EXTERN
 #if defined(__cplusplus)

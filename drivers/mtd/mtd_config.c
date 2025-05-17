@@ -66,7 +66,7 @@
 #  define CONFIGDATA_FORMAT_VERSION     2
 #  define MTD_ERASED_ID(dev)            (((dev)->erasestate << 8) | (dev)->erasestate)
 #endif
-#define CONFIGDATA_BLOCK_HDR_SIZE       3
+#define CONFIGDATA_BLOCK_HDR_SIZE       4
 #define MTD_ERASED_FLAGS(dev)           ((dev)->erasestate)
 
 /****************************************************************************
@@ -96,6 +96,8 @@ begin_packed_struct struct mtdconfig_header_s
   uint16_t     id;            /* ID of the config data item */
 #endif
   uint16_t     len;           /* Length of the data block */
+
+  uint16_t     padding;
 } end_packed_struct;
 
 /****************************************************************************
@@ -1346,6 +1348,7 @@ retry_find:
 #endif
       hdr.len = pdata->len;
       hdr.flags = MTD_ERASED_FLAGS(dev);
+      hdr.padding = 0;
 
       ret = mtdconfig_writebytes(dev, offset,
                                  (FAR uint8_t *)&hdr, sizeof(hdr));

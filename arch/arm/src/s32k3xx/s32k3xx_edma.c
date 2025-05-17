@@ -71,7 +71,7 @@
 #include "hardware/s32k3xx_edma.h"
 #include "hardware/s32k3xx_dmamux.h"
 #include "s32k3xx_edma.h"
-#include "s32k3xx_clocknames.h"
+//#include "s32k3xx_clocknames.h"
 #include "s32k3xx_periphclocks.h"
 
 #ifdef CONFIG_S32K3XX_EDMA
@@ -225,193 +225,193 @@ const struct peripheral_clock_config_s edma_clockconfig[] =
 {
 #if S32K3XX_EDMA_NCHANNELS > 0
   {
-    .clkname = EDMA_TCD0_CLK,
+    .clkname = EDMA0_TCD0_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 1
   {
-    .clkname = EDMA_TCD1_CLK,
+    .clkname = EDMA0_TCD1_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 2
   {
-    .clkname = EDMA_TCD2_CLK,
+    .clkname = EDMA0_TCD2_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 3
   {
-    .clkname = EDMA_TCD3_CLK,
+    .clkname = EDMA0_TCD3_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 4
   {
-    .clkname = EDMA_TCD4_CLK,
+    .clkname = EDMA0_TCD4_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 5
   {
-    .clkname = EDMA_TCD5_CLK,
+    .clkname = EDMA0_TCD5_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 6
   {
-    .clkname = EDMA_TCD6_CLK,
+    .clkname = EDMA0_TCD6_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 7
   {
-    .clkname = EDMA_TCD7_CLK,
+    .clkname = EDMA0_TCD7_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 8
   {
-    .clkname = EDMA_TCD8_CLK,
+    .clkname = EDMA0_TCD8_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 9
   {
-    .clkname = EDMA_TCD9_CLK,
+    .clkname = EDMA0_TCD9_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 10
   {
-    .clkname = EDMA_TCD10_CLK,
+    .clkname = EDMA0_TCD10_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 11
   {
-    .clkname = EDMA_TCD11_CLK,
+    .clkname = EDMA0_TCD11_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 12
   {
-    .clkname = EDMA_TCD12_CLK,
+    .clkname = EDMA0_TCD12_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 13
   {
-    .clkname = EDMA_TCD13_CLK,
+    .clkname = EDMA0_TCD13_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 14
   {
-    .clkname = EDMA_TCD14_CLK,
+    .clkname = EDMA0_TCD14_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 15
   {
-    .clkname = EDMA_TCD15_CLK,
+    .clkname = EDMA0_TCD15_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 16
   {
-    .clkname = EDMA_TCD16_CLK,
+    .clkname = EDMA0_TCD16_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 17
   {
-    .clkname = EDMA_TCD17_CLK,
+    .clkname = EDMA0_TCD17_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 18
   {
-    .clkname = EDMA_TCD18_CLK,
+    .clkname = EDMA0_TCD18_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 19
   {
-    .clkname = EDMA_TCD19_CLK,
+    .clkname = EDMA0_TCD19_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 20
   {
-    .clkname = EDMA_TCD20_CLK,
+    .clkname = EDMA0_TCD20_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 21
   {
-    .clkname = EDMA_TCD21_CLK,
+    .clkname = EDMA0_TCD21_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 22
   {
-    .clkname = EDMA_TCD22_CLK,
+    .clkname = EDMA0_TCD22_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 23
   {
-    .clkname = EDMA_TCD23_CLK,
+    .clkname = EDMA0_TCD23_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 24
   {
-    .clkname = EDMA_TCD24_CLK,
+    .clkname = EDMA0_TCD24_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 25
   {
-    .clkname = EDMA_TCD25_CLK,
+    .clkname = EDMA0_TCD25_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 26
   {
-    .clkname = EDMA_TCD26_CLK,
+    .clkname = EDMA0_TCD26_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 27
   {
-    .clkname = EDMA_TCD27_CLK,
+    .clkname = EDMA0_TCD27_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 28
   {
-    .clkname = EDMA_TCD28_CLK,
+    .clkname = EDMA0_TCD28_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 29
   {
-    .clkname = EDMA_TCD29_CLK,
+    .clkname = EDMA0_TCD29_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 30
   {
-    .clkname = EDMA_TCD30_CLK,
+    .clkname = EDMA0_TCD30_CLK,
     .clkgate = true,
   },
 #endif
 #if S32K3XX_EDMA_NCHANNELS > 31
   {
-    .clkname = EDMA_TCD31_CLK,
+    .clkname = EDMA0_TCD31_CLK,
     .clkgate = true,
   },
 #endif
@@ -934,9 +934,9 @@ void weak_function arm_dma_initialize(void)
 
   /* Enable clocking for DMA */
 
-  s32k3xx_periphclocks(sizeof(edma_clockconfig) /
-                       sizeof(struct peripheral_clock_config_s),
-                       edma_clockconfig);
+  //s32k3xx_periphclocks(sizeof(edma_clockconfig) /
+  //                     sizeof(struct peripheral_clock_config_s),
+  //                     edma_clockconfig);
 
   /* Enable clocking for the DMA mux */
 

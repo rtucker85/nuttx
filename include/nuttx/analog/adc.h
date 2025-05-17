@@ -331,6 +331,17 @@ FAR struct adc_dev_s *ads7828_initialize(FAR struct i2c_master_s *i2c,
 
 FAR struct adc_dev_s *max1161x_initialize(FAR struct i2c_master_s *i2c);
 
+/****************************************************************************
+ * Name: ads131m0x_initialize
+ *
+ * Description:
+ *   Initialize the TI ADS 125X lower half driver
+ *
+ ****************************************************************************/
+
+ FAR struct adc_dev_s *ads131m0x_initialize(FAR struct spi_dev_s *spi,
+  unsigned int devno);
+
 #if defined(__cplusplus)
 }
 #endif

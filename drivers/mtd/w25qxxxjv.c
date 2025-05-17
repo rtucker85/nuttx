@@ -699,7 +699,7 @@ static inline int w25qxxxjv_readid(FAR struct w25qxxxjv_dev_s *priv)
 
   w25qxxxjv_unlock(priv->qspi);
 
-  finfo("Manufacturer: %02x Device Type %02x, Capacity: %02x\n",
+  _info("Manufacturer: %02x Device Type %02x, Capacity: %02x\n",
         priv->cmdbuf[0], priv->cmdbuf[1], priv->cmdbuf[2]);
 
   /* Check for a recognized memory device type */
@@ -707,7 +707,7 @@ static inline int w25qxxxjv_readid(FAR struct w25qxxxjv_dev_s *priv)
   if (priv->cmdbuf[1] != W25QXXXJVQ_JEDEC_DEVICE_TYPE &&
       priv->cmdbuf[1] != W25QXXXJVM_JEDEC_DEVICE_TYPE)
     {
-      ferr("ERROR: Unrecognized device type: 0x%02x\n", priv->cmdbuf[1]);
+      _err("ERROR: Unrecognized device type: 0x%02x\n", priv->cmdbuf[1]);
       return -ENODEV;
     }
 
@@ -794,7 +794,7 @@ static inline int w25qxxxjv_readid(FAR struct w25qxxxjv_dev_s *priv)
       /* Support for this part is not implemented yet */
 
       default:
-        ferr("ERROR: Unsupported memory capacity: %02x\n", priv->cmdbuf[2]);
+        _err("ERROR: Unsupported memory capacity: %02x\n", priv->cmdbuf[2]);
         return -ENODEV;
     }
 
@@ -1722,7 +1722,7 @@ FAR struct mtd_dev_s *w25qxxxjv_initialize(FAR struct qspi_dev_s *qspi,
            * return NULL
            */
 
-          ferr("ERROR Unrecognized QSPI device\n");
+          _err("ERROR Unrecognized QSPI device\n");
           goto errout_with_readbuf;
         }
 

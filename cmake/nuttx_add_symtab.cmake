@@ -67,10 +67,10 @@ function(nuttx_add_symtab)
   # generate list of undefined symbols
   add_custom_command(
     OUTPUT symtab_${NAME}.dat
-    COMMAND ${CMAKE_NM} ${BINARY_PATHS} | fgrep ' U ' | sed -e "s/^[ ]*//g" |
+    COMMAND ${CMAKE_NM} ${BINARY_PATHS} | grep -F ' U ' | sed -e "s/^[ ]*//g" |
             cut -d' ' -f2 | sort | uniq > symtab_${NAME}.dat
     COMMAND
-      if [ \"${EXCLUDE}\" != \"\" ]\; then fgrep -v -x ${EXCLUDE_STRING}
+      if [ \"${EXCLUDE}\" != \"\" ]\; then grep -F -v -x ${EXCLUDE_STRING}
       symtab_${NAME}.dat > symtab_${NAME}.dat2\; mv symtab_${NAME}.dat2
       symtab_${NAME}.dat\; fi
     DEPENDS ${BINARIES})
