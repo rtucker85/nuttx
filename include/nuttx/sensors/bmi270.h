@@ -28,7 +28,46 @@
  ****************************************************************************/
 
 #include <nuttx/config.h>
-#include <nuttx/compiler.h>
+#include <nuttx/fs/ioctl.h>
+
+#if defined(CONFIG_SENSORS_BMI270)
+
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+#define BMI270_SPI_MAXFREQUENCY 10000000
+
+/* Configuration ************************************************************/
+
+/* Power mode */
+
+#define BMI270_PM_SUSPEND     (0x00)
+#define BMI270_PM_NORMAL      (0x01)
+#define BMI270_PM_LOWPOWER    (0x02)
+#define BMI270_PM_FASTSTARTUP (0x03)
+
+/* Output data rate */
+
+#define BMI270_ACCEL_ODR_0_78HZ (0x01)
+#define BMI270_ACCEL_ODR_1_56HZ (0x02)
+#define BMI270_ACCEL_ODR_3_12HZ (0x03)
+#define BMI270_ACCEL_ODR_6_25HZ (0x04)
+#define BMI270_ACCEL_ODR_12_5HZ (0x05)
+#define BMI270_ACCEL_ODR_25HZ   (0x06)
+#define BMI270_ACCEL_ODR_50HZ   (0x07)
+#define BMI270_ACCEL_ODR_100HZ  (0x08)
+#define BMI270_ACCEL_ODR_200HZ  (0x09)
+#define BMI270_ACCEL_ODR_400HZ  (0x0A)
+#define BMI270_ACCEL_ODR_800HZ  (0x0B)
+#define BMI270_ACCEL_ODR_1600HZ (0x0C)
+
+/* IOCTL Commands ***********************************************************/
+
+#define SNIOC_ENABLESC     _SNIOC(0x0001) /* Arg: uint8_t value */
+#define SNIOC_READSC       _SNIOC(0x0002) /* Arg: int16_t* pointer */
+#define SNIOC_SETACCPM     _SNIOC(0x0003) /* Arg: uint8_t value */
+#define SNIOC_SETACCODR    _SNIOC(0x0004) /* Arg: uint8_t value */
 
 /****************************************************************************
  * Public Types
@@ -54,13 +93,13 @@ struct gyro_t
 
 struct accel_gyro_st_s
 {
-  struct accel_t accel;
   struct gyro_t  gyro;
+  struct accel_t accel;
   uint32_t sensor_time;
 };
 
-struct i2c_master_s;
 struct spi_dev_s;
+struct i2c_master_s;
 
 /****************************************************************************
  * Public Function Prototypes
@@ -84,23 +123,24 @@ extern "C"
  *   devpath - The full path to the driver to register. E.g., "/dev/accel0"
  *   dev     - An instance of the SPI or I2C interface to use to communicate
  *             with BMI270
- *   addr    - (I2C only) I2C address
  *
  * Returned Value:
  *   Zero (OK) on success; a negated errno value on failure.
  *
  ****************************************************************************/
 
-#if defined(CONFIG_SENSORS_BMI270_I2C) && defined(CONFIG_SENSORS_BMI270_UORB)
-int bmi270_register_uorb(int devno, FAR struct i2c_master_s *dev,
-                         uint8_t addr);
-#elif defined(CONFIG_SENSORS_BMI270_I2C) && !defined(CONFIG_SENSORS_BMI270_UORB)
-int bmi270_register(FAR const char *devpath, FAR struct i2c_master_s *dev,
-                    uint8_t addr);
-#elif !defined(CONFIG_SENSORS_BMI270_I2C) && defined(CONFIG_SENSORS_BMI270_UORB)
+#ifdef CONFIG_SENSORS_BMI270_I2C
+#  ifdef CONFIG_SENSORS_BMI270_UORB
+int bmi270_register_uorb(int devno, FAR struct i2c_master_s *dev);
+#  else
+int bmi270_register(FAR const char *devpath, FAR struct i2c_master_s *dev);
+#  endif /* CONFIG_SENSORS_BMI270_UORB */
+#else /* CONFIG_BMI270_SPI */
+#  ifdef CONFIG_SENSORS_BMI270_UORB
 int bmi270_register_uorb(int devno, FAR struct spi_dev_s *dev);
-#elif !defined(CONFIG_SENSORS_BMI270_I2C) && !defined(CONFIG_SENSORS_BMI270_UORB)
+#  else
 int bmi270_register(FAR const char *devpath, FAR struct spi_dev_s *dev);
+#  endif /* CONFIG_SENSORS_BMI270_UORB */
 #endif
 
 #undef EXTERN
@@ -108,4 +148,5 @@ int bmi270_register(FAR const char *devpath, FAR struct spi_dev_s *dev);
 }
 #endif
 
+#endif /* CONFIG_SENSORS_BMI270 */
 #endif /* __INCLUDE_NUTTX_SENSORS_BMI270_H */
