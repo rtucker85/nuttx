@@ -1130,7 +1130,7 @@ static uint32_t qspi_setfrequency(struct qspi_dev_s *dev, uint32_t frequency)
   (void)priv;
 
   /* FIXME add support for frequency switching,
-   * typically reads can be higher the nwrites
+   * typically reads can be higher then writes
    */
 
   return actual;
