@@ -755,6 +755,7 @@ static double bmp280_compensate_press_f(FAR struct bmp280_dev_s *priv,
  static int32_t bmp280_compensate_hum(FAR struct bmp280_dev_s *priv,
                                       int32_t hum)
 {
+  return 0;
 }
 
 /****************************************************************************
