@@ -24,577 +24,701 @@
  * Included Files
  ****************************************************************************/
 
-#include <nuttx/config.h>
-
-#include <math.h>
-#include <stdio.h>
-#include <string.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <sys/param.h>
-
-#include <nuttx/mutex.h>
-#include <nuttx/signal.h>
-#include <nuttx/compiler.h>
-#include <nuttx/nuttx.h>
-#include <nuttx/kthread.h>
-//#include <nuttx/wqueue.h>
-
-#include <nuttx/sensors/sensor.h>
-#include <nuttx/sensors/ioctl.h>
-
 #include "bmi270_base.h"
+#include <sys/param.h>
+#include <nuttx/wqueue.h>
+#include <nuttx/signal.h>
+#include <nuttx/sensors/sensor.h>
+
+#if defined(CONFIG_SENSORS_BMI270_UORB)
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define CONSTANTS_ONE_G 9.806650f
+#define BMI270_DEFAULT_INTERVAL   10000  /* Default conversion interval. */
 
 /****************************************************************************
  * Private Types
  ****************************************************************************/
 
-enum bmi270_idx_e
+/* Sensor ODR */
+
+struct bmi270_odr_s
 {
-  BMI270_ACCEL_IDX = 0,
-  BMI270_GYRO_IDX,
-  BMI270_MAX_IDX
+  uint8_t regval;    /* the data of register */
+  uint32_t odr;      /* the unit is us */
 };
 
-struct bmi270_sensor_s
-{
-  struct sensor_lowerhalf_s  lower;
-  uint64_t                   last_update;
-  float                      scale;
-  FAR void                  *dev;
-  struct work_s              work;
-  bool                       enabled;
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  uint32_t                   interval;
-#endif
-  struct bmi270_dev_s        base;
-};
+/* Device struct */
 
-struct bmi270_sensor_dev_s
+struct bmi270_dev_uorb_s
 {
-  struct bmi270_sensor_s priv[BMI270_MAX_IDX];
-  mutex_t                lock;
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  sem_t                  run;
-#endif
+  /* sensor_lowerhalf_s must be in the first line. */
+
+  struct sensor_lowerhalf_s lower;      /* Lower half sensor driver. */
+
+  struct work_s work;                   /* Interrupt handler worker. */
+  uint32_t interval;                    /* Sensor acquisition interval. */
+
+  struct bmi270_dev_s dev;
 };
 
 /****************************************************************************
  * Private Function Prototypes
  ****************************************************************************/
 
-/* Sensor methods */
+/* Sensor handle functions */
 
-static int bmi270_activate(FAR struct sensor_lowerhalf_s *lower,
-                           FAR struct file *filep,
-                           bool enable);
-static int bmi270_set_interval(FAR struct sensor_lowerhalf_s *lower,
-                               FAR struct file *filep,
-                               FAR uint32_t *period_us);
-#ifndef CONFIG_SENSORS_BMI270_POLL
-static int bmi270_fetch(FAR struct sensor_lowerhalf_s *lower,
-                        FAR struct file *filep,
-                        FAR char *buffer, size_t buflen);
-#endif
-static int bmi270_control(FAR struct sensor_lowerhalf_s *lower,
-                          FAR struct file *filep,
-                          int cmd, unsigned long arg);
+static void bmi270_accel_enable(FAR struct bmi270_dev_uorb_s *priv,
+                                bool enable);
+static void bmi270_gyro_enable(FAR struct bmi270_dev_uorb_s *priv,
+                               bool enable);
 
-/* Helpers */
+/* Sensor ops functions */
 
-static int bmi270_accel_scale(FAR struct bmi270_sensor_s *priv,
-                              uint8_t scale);
-static int bmi270_gyro_scale(FAR struct bmi270_sensor_s *priv,
-                             uint16_t scale);
+static int bmi270_set_accel_interval(FAR struct sensor_lowerhalf_s *lower,
+                                     FAR struct file *filep,
+                                     FAR uint32_t *period_us);
+static int bmi270_set_gyro_interval(FAR struct sensor_lowerhalf_s *lower,
+                                    FAR struct file *filep,
+                                    FAR uint32_t *period_us);
+static int bmi270_accel_activate(FAR struct sensor_lowerhalf_s *lower,
+                                 FAR struct file *filep,
+                                 bool enable);
+static int bmi270_gyro_activate(FAR struct sensor_lowerhalf_s *lower,
+                                FAR struct file *filep,
+                                bool enable);
+
+/* Sensor poll functions */
+
+static void bmi270_accel_worker(FAR void *arg);
+static void bmi270_gyro_worker(FAR void *arg);
+static int bmi270_findodr(uint32_t time,
+                          FAR const struct bmi270_odr_s *odr_s,
+                          int len);
 
 /****************************************************************************
  * Private Data
  ****************************************************************************/
 
-static const struct sensor_ops_s g_sensor_ops =
+static const struct sensor_ops_s g_bmi270_accel_ops =
 {
-  NULL,                 /* open */
-  NULL,                 /* close */
-  bmi270_activate,
-  bmi270_set_interval,
-  NULL,                 /* batch */
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  NULL,                 /* fetch */
-#else
-  bmi270_fetch,
-#endif
-  NULL,                 /* flush */
-  NULL,                 /* selftest */
-  NULL,                 /* set_calibvalue */
-  NULL,                 /* calibrate */
-  NULL,                 /* get_info */
-  bmi270_control
+  .activate     = bmi270_accel_activate,      /* Enable/disable sensor. */
+  .set_interval = bmi270_set_accel_interval,  /* Set output data period. */
+};
+
+static const struct sensor_ops_s g_bmi270_gyro_ops =
+{
+  .activate     = bmi270_gyro_activate,      /* Enable/disable sensor. */
+  .set_interval = bmi270_set_gyro_interval,  /* Set output data period. */
+};
+
+static const struct bmi270_odr_s g_bmi270_gyro_odr[] =
+{
+  { GYRO_ODR_25HZ,  40000 }, /* Sampling interval is 40ms. */
+  { GYRO_ODR_50HZ,  20000 }, /* Sampling interval is 20ms. */
+  { GYRO_ODR_100HZ, 10000 }, /* Sampling interval is 10ms. */
+  { GYRO_ODR_200HZ,  5000 }, /* Sampling interval is 5ms. */
+  { GYRO_ODR_400HZ,  2500 }, /* Sampling interval is 2.5ms. */
+  { GYRO_ODR_800HZ,  1250 }, /* Sampling interval is 1.25ms. */
+  { GYRO_ODR_1600HZ,  625 }, /* Sampling interval is 0.625ms. */
+  { GYRO_ODR_3200HZ,  312 }, /* Sampling interval is 0.3125ms. */
+};
+
+static const struct bmi270_odr_s g_bmi270_accel_odr[] =
+{
+  { BMI270_ACCEL_ODR_0_78HZ, 1282000 }, /* Sampling interval is 1282.0ms. */
+  { BMI270_ACCEL_ODR_1_56HZ,  641000 }, /* Sampling interval is 641.0ms. */
+  { BMI270_ACCEL_ODR_3_12HZ,  320500 }, /* Sampling interval is 320.5ms. */
+  { BMI270_ACCEL_ODR_6_25HZ,  160000 }, /* Sampling interval is 160.0ms. */
+  { BMI270_ACCEL_ODR_12_5HZ,   80000 }, /* Sampling interval is 80.0ms. */
+  { BMI270_ACCEL_ODR_25HZ,     40000 }, /* Sampling interval is 40.0ms. */
+  { BMI270_ACCEL_ODR_50HZ,     20000 }, /* Sampling interval is 20.0ms. */
+  { BMI270_ACCEL_ODR_100HZ,    10000 }, /* Sampling interval is 10.0ms. */
+  { BMI270_ACCEL_ODR_200HZ,     5000 }, /* Sampling interval is 5.0ms. */
+  { BMI270_ACCEL_ODR_400HZ,     2500 }, /* Sampling interval is 2.5ms. */
+  { BMI270_ACCEL_ODR_800HZ,     1250 }, /* Sampling interval is 1.25ms. */
+  { BMI270_ACCEL_ODR_1600HZ,     625 }, /* Sampling interval is 0.625ms. */
 };
 
 /****************************************************************************
- * Private Functions
+ * Name: bmi270_findodr
+ *
+ * Description:
+ *   Find the period that matches best.
+ *
+ * Input Parameters:
+ *   time  - Desired interval.
+ *   odr_s - Array of sensor output data rate.
+ *   len   - Array length.
+ *
+ * Returned Value:
+ *   Index of the best fit ODR.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
  ****************************************************************************/
+
+static int bmi270_findodr(uint32_t time,
+                          FAR const struct bmi270_odr_s *odr_s,
+                          int len)
+{
+  int i;
+
+  for (i = 0; i < len; i++)
+    {
+      if (time == odr_s[i].odr)
+        {
+          return i;
+        }
+    }
+
+  return i - 1;
+}
 
 /****************************************************************************
- * Name: bmi270_activate
+ * Name: bmi270_accel_enable
+ *
+ * Description:
+ *   Enable or disable sensor device. when enable sensor, sensor will
+ *   work in  current mode(if not set, use default mode). when disable
+ *   sensor, it will disable sense path and stop convert.
+ *
+ * Input Parameters:
+ *   priv   - The instance of lower half sensor driver
+ *   enable - true(enable) and false(disable)
+ *
+ * Returned Value:
+ *   Return 0 if the driver was success; A negated errno
+ *   value is returned on any failure.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
  ****************************************************************************/
 
-static int bmi270_activate(FAR struct sensor_lowerhalf_s *lower,
-                           FAR struct file *filep, bool enable)
+static void bmi270_accel_enable(FAR struct bmi270_dev_uorb_s *priv,
+                                bool enable)
 {
-  FAR struct bmi270_sensor_s     *priv  = NULL;
-  FAR struct bmi270_sensor_dev_s *dev   = NULL;
-  bool                            start = false;
-  bool                            stop  = false;
-  int                             ret   = OK;
-  int                             tmp   = 0;
+  int idx;
 
-  priv = (FAR struct bmi270_sensor_s *)lower;
-  dev = priv->dev;
-
-#if 1
-  nxmutex_lock(&dev->lock);
-
-  tmp = (dev->priv[BMI270_ACCEL_IDX].enabled +
-         dev->priv[BMI270_GYRO_IDX].enabled);
-
-  if (enable && tmp == 0)
-    {
-      /* One time start */
-
-      start = true;
-    }
-  else if (!enable && tmp == 1)
-    {
-      /* One time stop */
-
-      stop = true;
-    }
-
-  priv->enabled = enable;
-
-  nxmutex_unlock(&dev->lock);
-
-  if (start)
-    {
-      /* Set normal mode */
-
-      bmi270_set_normal_imu(&priv->base);
-
-#ifdef CONFIG_SENSORS_BMI270_POLL
-      priv->last_update = sensor_get_timestamp();
-
-      /* Wake up the thread */
-
-      nxsem_post(&dev->run);
-#endif
-    }
-
-  else if (stop)
-    {
-      /* Disable acquisition of acc and gyro */
-
-      bmi270_putreg8(&priv->base, BMI270_PWR_CTRL, 0);
-      up_mdelay(30);
-    }
-#else
   if (enable)
-  {
-    bmi270_set_normal_imu(&priv->base);
-    work_queue(HPWORK, &priv->work,
-      bmi270_thread, priv,
-      priv->interval / USEC_PER_TICK);
-  }
+    {
+      /* Set accel as normal mode. */
+
+      //bmi160_putreg8(&priv->dev, BMI160_CMD, ACCEL_PM_NORMAL);
+      nxsig_usleep(30000);
+
+      idx = bmi270_findodr(priv->interval, g_bmi270_accel_odr,
+                           nitems(g_bmi270_accel_odr));
+      //bmi160_putreg8(&priv->dev, BMI160_ACCEL_CONFIG,
+      //               ACCEL_NORMAL_AVG4 | g_bmi160_accel_odr[idx].regval);
+
+      work_queue(HPWORK, &priv->work,
+                 bmi270_accel_worker, priv,
+                 priv->interval / USEC_PER_TICK);
+    }
   else
-  {
-    bmi270_putreg8(&priv->base, BMI270_PWR_CTRL, 0);
-  }
-#endif
-  return ret;
+    {
+      /* Set suspend mode to sensors. */
+
+      work_cancel(HPWORK, &priv->work);
+      //bmi160_putreg8(&priv->dev, BMI160_CMD, ACCEL_PM_SUSPEND);
+    }
 }
 
 /****************************************************************************
- * Name: bmi270_set_interval
+ * Name: bmi270_gyro_enable
+ *
+ * Description:
+ *   Enable or disable sensor device. when enable sensor, sensor will
+ *   work in  current mode(if not set, use default mode). when disable
+ *   sensor, it will disable sense path and stop convert.
+ *
+ * Input Parameters:
+ *   priv   - The instance of lower half sensor driver
+ *   enable - true(enable) and false(disable)
+ *
+ * Returned Value:
+ *   Return 0 if the driver was success; A negated errno
+ *   value is returned on any failure.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
  ****************************************************************************/
 
-static int bmi270_set_interval(FAR struct sensor_lowerhalf_s *lower,
-                               FAR struct file *filep,
-                               FAR uint32_t *interval)
+static void bmi270_gyro_enable(FAR struct bmi270_dev_uorb_s *priv,
+                               bool enable)
 {
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  FAR struct bmi270_sensor_s *priv = NULL;
+  int idx;
 
-  priv = (FAR struct bmi270_sensor_s *)lower;
+  if (enable)
+    {
+      /* Set gyro as normal mode. */
 
-  priv->interval = *interval;
-#endif
+      //bmi160_putreg8(&priv->dev, BMI160_CMD, GYRO_PM_NORMAL);
+      nxsig_usleep(30000);
+
+      idx = bmi270_findodr(priv->interval, g_bmi270_gyro_odr,
+                           nitems(g_bmi270_gyro_odr));
+      //bmi160_putreg8(&priv->dev, BMI160_GYRO_CONFIG,
+      //              GYRO_NORMAL_MODE | g_bmi160_gyro_odr[idx].regval);
+
+      work_queue(HPWORK, &priv->work,
+                 bmi270_gyro_worker, priv,
+                 priv->interval / USEC_PER_TICK);
+    }
+  else
+    {
+      work_cancel(HPWORK, &priv->work);
+
+      /* Set suspend mode to sensors. */
+
+      //bmi160_putreg8(&priv->dev, BMI160_CMD, GYRO_PM_SUSPEND);
+    }
+}
+
+/****************************************************************************
+ * Name: bmi270_set_accel_interval
+ *
+ * Description:
+ *   Set the sensor output data period in microseconds for a given sensor.
+ *   If *period_us > max_delay it will be truncated to max_delay and if
+ *   *period_us < min_delay it will be replaced by min_delay.
+ *
+ * Input Parameters:
+ *   lower     - The instance of lower half sensor driver.
+ *   filep     - The pointer of file, represents each user using the sensor.
+ *   period_us - The time between report data, in us. It may by overwrite
+ *                by lower half driver.
+ *
+ * Returned Value:
+ *   Return 0 if the driver was success; A negated errno
+ *   value is returned on any failure.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
+ ****************************************************************************/
+
+static int bmi270_set_accel_interval(FAR struct sensor_lowerhalf_s *lower,
+                                     FAR struct file *filep,
+                                     FAR uint32_t *period_us)
+{
+  FAR struct bmi270_dev_uorb_s *priv = (FAR struct bmi270_dev_uorb_s *)lower;
+  int num;
+
+  /* Sanity check. */
+
+  if (NULL == priv || NULL == period_us)
+    {
+      return -EINVAL;
+    }
+
+  num = bmi270_findodr(*period_us, g_bmi270_accel_odr,
+                       nitems(g_bmi270_accel_odr));
+  //bmi160_putreg8(&priv->dev, BMI160_ACCEL_CONFIG,
+  //               ACCEL_NORMAL_AVG4 | g_bmi160_accel_odr[num].regval);
+
+  priv->interval = g_bmi270_accel_odr[num].odr;
+  *period_us = priv->interval;
+  return OK;
+}
+
+/****************************************************************************
+ * Name: bmi270_set_gyro_interval
+ *
+ * Description:
+ *   Set the sensor output data period in microseconds for a given sensor.
+ *   If *period_us > max_delay it will be truncated to max_delay and if
+ *   *period_us < min_delay it will be replaced by min_delay.
+ *
+ * Input Parameters:
+ *   lower     - The instance of lower half sensor driver.
+ *   filep     - The pointer of file, represents each user using the sensor.
+ *   period_us - The time between report data, in us. It may by overwrite
+ *                by lower half driver.
+ *
+ * Returned Value:
+ *   Return 0 if the driver was success; A negated errno
+ *   value is returned on any failure.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
+ ****************************************************************************/
+
+static int bmi270_set_gyro_interval(FAR struct sensor_lowerhalf_s *lower,
+                                    FAR struct file *filep,
+                                    FAR uint32_t *period_us)
+{
+  FAR struct bmi270_dev_uorb_s *priv = (FAR struct bmi270_dev_uorb_s *)lower;
+  int num;
+
+  /* Sanity check. */
+
+  if (NULL == priv || NULL == period_us)
+    {
+      return -EINVAL;
+    }
+
+  num = bmi270_findodr(*period_us, g_bmi270_gyro_odr,
+                       nitems(g_bmi270_gyro_odr));
+  //bmi160_putreg8(&priv->dev, BMI160_GYRO_CONFIG,
+  //               GYRO_NORMAL_MODE | g_bmi160_gyro_odr[num].regval);
+
+  priv->interval = g_bmi270_gyro_odr[num].odr;
+  *period_us = priv->interval;
+  return OK;
+}
+
+/****************************************************************************
+ * Name: bmi270_gyro_activate
+ *
+ * Description:
+ *   Enable or disable sensor device. when enable sensor, sensor will
+ *   work in  current mode(if not set, use default mode). when disable
+ *   sensor, it will disable sense path and stop convert.
+ *
+ * Input Parameters:
+ *   lower  - The instance of lower half sensor driver.
+ *   filep  - The pointer of file, represents each user using the sensor.
+ *   enable - true(enable) and false(disable).
+ *
+ * Returned Value:
+ *   Return 0 if the driver was success; A negated errno
+ *   value is returned on any failure.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
+ ****************************************************************************/
+
+static int bmi270_gyro_activate(FAR struct sensor_lowerhalf_s *lower,
+                                FAR struct file *filep,
+                                bool enable)
+{
+  FAR struct bmi270_dev_uorb_s *priv = (FAR struct bmi270_dev_uorb_s *)lower;
+
+  bmi270_gyro_enable(priv, enable);
 
   return OK;
 }
 
-#ifndef CONFIG_SENSORS_BMI270_POLL
 /****************************************************************************
- * Name: bmi270_fetch
- ****************************************************************************/
-
-static int bmi270_fetch(FAR struct sensor_lowerhalf_s *lower,
-                        FAR struct file *filep, FAR char *buffer,
-                        size_t buflen)
-{
-  FAR struct bmi270_sensor_s *priv = NULL;
-  int16_t                     data[3];
-  int16_t                     temp_data;
-  int                         ret  = OK;
-
-  priv = (FAR struct bmi270_sensor_s *)lower;
-
-  switch (lower->type)
-    {
-      case SENSOR_TYPE_ACCELEROMETER:
-        {
-          struct sensor_accel accel;
-
-          bmi270_getregs(&priv->base, BMI270_DATA_8,
-                         (FAR uint8_t *)data, 6);
-
-          bmi270_getregs(&priv->base, BMI270_TEMPERATURE_0,
-                         (FAR uint8_t *)&temp_data, 2);
-
-          accel.timestamp   = sensor_get_timestamp();
-          accel.x           = data[0] * priv->scale;
-          accel.y           = data[1] * priv->scale;
-          accel.z           = data[2] * priv->scale;
-          accel.temperature = (float)((((float)((int16_t)temp_data)) / 512.0) + 23.0);
-
-          memcpy(buffer, &accel, sizeof(accel));
-          ret = sizeof(accel);
-
-          break;
-        }
-
-      case SENSOR_TYPE_GYROSCOPE:
-        {
-          struct sensor_gyro gyro;
-
-          bmi270_getregs(&priv->base, BMI270_DATA_14,
-                         (FAR uint8_t *)data, 6);
-
-          bmi270_getregs(&priv->base, BMI270_TEMPERATURE_0,
-                         (FAR uint8_t *)&temp_data, 2);
-
-          gyro.timestamp   = sensor_get_timestamp();
-          gyro.x           = data[0] * priv->scale;
-          gyro.y           = data[1] * priv->scale;
-          gyro.z           = data[2] * priv->scale;
-          gyro.temperature = (float)((((float)((int16_t)temp_data)) / 512.0) + 23.0);
-
-          memcpy(buffer, &gyro, sizeof(gyro));
-          ret = sizeof(gyro);
-
-          break;
-        }
-
-      default:
-        {
-          ret = -EINVAL;
-          break;
-        }
-    }
-
-  return ret;
-}
-#endif
-
-/****************************************************************************
- * Name: bmi270_cotrol
- ****************************************************************************/
-
-static int bmi270_control(FAR struct sensor_lowerhalf_s *lower,
-                          FAR struct file *filep, int cmd,
-                          unsigned long arg)
-{
-  FAR struct bmi270_sensor_s *priv = NULL;
-  int                          ret  = OK;
-
-  priv = (FAR struct bmi270_sensor_s *)lower;
-
-  switch (cmd)
-    {
-      /* Set full scale command */
-
-      case SNIOC_SET_SCALE_XL:
-        {
-          if (priv->lower.type == SENSOR_TYPE_GYROSCOPE)
-            {
-              ret = bmi270_gyro_scale(priv, arg);
-            }
-          else if (priv->lower.type == SENSOR_TYPE_ACCELEROMETER)
-            {
-              ret = bmi270_accel_scale(priv, arg);
-            }
-
-          break;
-        }
-
-      default:
-        {
-          snerr("ERROR: Unrecognized cmd: %d\n", cmd);
-          ret = -ENOTTY;
-          break;
-        }
-    }
-
-  return ret;
-}
-
-/****************************************************************************
- * Name: bmi270_midpoint
+ * Name: bmi270_accel_activate
  *
  * Description:
- *   Find the midpoint between two numbers.
+ *   Enable or disable sensor device. when enable sensor, sensor will
+ *   work in  current mode(if not set, use default mode). when disable
+ *   sensor, it will disable sense path and stop convert.
+ *
+ * Input Parameters:
+ *   lower  - The instance of lower half sensor driver.
+ *   filep  - The pointer of file, represents each user using the sensor.
+ *   enable - true(enable) and false(disable).
+ *
+ * Returned Value:
+ *   Return 0 if the driver was success; A negated errno
+ *   value is returned on any failure.
+ *
+ * Assumptions/Limitations:
+ *   none.
  *
  ****************************************************************************/
 
-static uint32_t bmi270_midpoint(uint32_t a, uint32_t b)
+static int bmi270_accel_activate(FAR struct sensor_lowerhalf_s *lower,
+                                 FAR struct file *filep,
+                                 bool enable)
 {
-  return (uint32_t)(((uint64_t)a +
-                     (uint64_t)b + (uint64_t)1) / (uint64_t)2);
-}
+  FAR struct bmi270_dev_uorb_s *priv = (FAR struct bmi270_dev_uorb_s *)lower;
 
-/****************************************************************************
- * Name: bmi270_accel_scale
- ****************************************************************************/
-
-static int bmi270_accel_scale(FAR struct bmi270_sensor_s *priv,
-                              uint8_t scale)
-{
-  int ret = OK;
-
-  if (scale < bmi270_midpoint(2, 4))
-    {
-      bmi270_putreg8(&priv->base, BMI270_ACC_RANGE, ACCEL_RANGE_2G);
-      priv->scale = CONSTANTS_ONE_G / 16384.f;
-    }
-  else if (scale < bmi270_midpoint(4, 8))
-    {
-      bmi270_putreg8(&priv->base, BMI270_ACC_RANGE, ACCEL_RANGE_4G);
-      priv->scale = CONSTANTS_ONE_G / 8192.f;
-    }
-  else if (scale < bmi270_midpoint(8, 16))
-    {
-      bmi270_putreg8(&priv->base, BMI270_ACC_RANGE, ACCEL_RANGE_8G);
-      priv->scale = CONSTANTS_ONE_G / 4096.f;
-    }
-  else
-    {
-      bmi270_putreg8(&priv->base, BMI270_ACC_RANGE, ACCEL_RANGE_16G);
-      priv->scale = CONSTANTS_ONE_G / 2048.f;
-    }
-
-  return ret;
-}
-
-/****************************************************************************
- * Name: bmi270_gyro_scale
- ****************************************************************************/
-
-static int bmi270_gyro_scale(FAR struct bmi270_sensor_s *priv,
-                             uint16_t scale)
-{
-  int ret = OK;
-
-  if (scale < bmi270_midpoint(125, 250))
-    {
-      bmi270_putreg8(&priv->base, BMI270_GYR_RANGE, GYRO_RANGE_125);
-      priv->scale = (M_PI / 180.0f) * 125.f / 32768.f;
-    }
-  else if (scale < bmi270_midpoint(250, 500))
-    {
-      bmi270_putreg8(&priv->base, BMI270_GYR_RANGE, GYRO_RANGE_250);
-      priv->scale = (M_PI / 180.0f) * 250.f / 32768.f;
-    }
-  else if (scale < bmi270_midpoint(500, 1000))
-    {
-      bmi270_putreg8(&priv->base, BMI270_GYR_RANGE, GYRO_RANGE_500);
-      priv->scale = (M_PI / 180.0f) * 500.f / 32768.f;
-    }
-  else if (scale < bmi270_midpoint(1000, 2000))
-    {
-      bmi270_putreg8(&priv->base, BMI270_GYR_RANGE, GYRO_RANGE_1000);
-      priv->scale = (M_PI / 180.0f) * 1000.f / 32768.f;
-    }
-  else
-    {
-      bmi270_putreg8(&priv->base, BMI270_GYR_RANGE, GYRO_RANGE_2000);
-      priv->scale = (M_PI / 180.0f) * 2000.f / 32768.f;
-    }
-
-  return ret;
-}
-
-#ifdef CONFIG_SENSORS_BMI270_POLL
-/****************************************************************************
- * Name: bmi270_accel_data
- *
- * Description:
- *   Get and push accel data from struct sensor_data_s
- *
- * Parameter:
- *   priv  - Internal private lower half driver instance
- *   buf  - Point to data
- *
- * Return:
- *   OK - on success
- *
- ****************************************************************************/
-
-static void bmi270_accel_data(FAR struct bmi270_sensor_s *priv,
-                              FAR int16_t *buf,
-                              float temp)
-{
-  FAR struct sensor_lowerhalf_s *lower = &priv->lower;
-  struct sensor_accel            accel;
-  uint64_t                       now   = sensor_get_timestamp();
-
-  if (!priv->enabled || now - priv->last_update < priv->interval)
-    {
-      return;
-    }
-
-  priv->last_update = now;
-
-  accel.timestamp   = now;
-  accel.x           = buf[0] * priv->scale;
-  accel.y           = buf[1] * priv->scale;
-  accel.z           = buf[2] * priv->scale;
-  accel.temperature = temp;
-
-  lower->push_event(lower->priv, &accel, sizeof(accel));
-}
-
-/****************************************************************************
- * Name: bmi270_gyro_data
- *
- * Description:
- *   Get and push gyro data from struct sensor_data_s
- *
- * Parameter:
- *   priv  - Internal private lower half driver instance
- *   buf  - Point to data
- *
- * Return:
- *   OK - on success
- *
- ****************************************************************************/
-
-static void bmi270_gyro_data(FAR struct bmi270_sensor_s *priv,
-                             FAR int16_t *buf,
-                             float temp)
-{
-  FAR struct sensor_lowerhalf_s *lower = &priv->lower;
-  struct sensor_gyro             gyro;
-  uint64_t                       now   = sensor_get_timestamp();
-
-  if (!priv->enabled || now - priv->last_update < priv->interval)
-    {
-      return;
-    }
-
-  priv->last_update = now;
-
-  gyro.timestamp   = now;
-  gyro.x           = buf[0] * priv->scale;
-  gyro.y           = buf[1] * priv->scale;
-  gyro.z           = buf[2] * priv->scale;
-  gyro.temperature = temp;
-
-  lower->push_event(lower->priv, &gyro, sizeof(gyro));
-}
-
-/****************************************************************************
- * Name: bmi270_thread
- *
- * Description:
- *   Thread for performing interval measurement cycle and data read.
- *
- * Parameter:
- *   argc - Number opf arguments
- *   argv - Pointer to argument list
- *
- ****************************************************************************/
-
-static int bmi270_thread(int argc, FAR char **argv)
-//static void bmi270_thread(FAR void *arg)
-{
-  FAR struct bmi270_sensor_dev_s *dev
-      = (FAR struct bmi270_sensor_dev_s *)((uintptr_t)strtoul(argv[1], NULL,
-                                                               16));
-  FAR struct bmi270_sensor_s *accel = &dev->priv[BMI270_ACCEL_IDX];
-  FAR struct bmi270_sensor_s *gyro  = &dev->priv[BMI270_GYRO_IDX];
-  unsigned long               min_interval;
-  int16_t                     accel_data[6];
-  int16_t                     temp_data[1];
-  float                       temp;
-  int                         ret;
-
-#if 1
-  while (true)
-    {
-      if ((!accel->enabled) && (!gyro->enabled))
-        {
-          /* Waiting to be woken up */
-
-          ret = nxsem_wait(&dev->run);
-          if (ret < 0)
-            {
-              continue;
-            }
-        }
-
-      /* Get data */
-
-      bmi270_getregs(&gyro->base, BMI270_DATA_8, (FAR uint8_t *)accel_data, 12);
-      bmi270_getregs(&gyro->base, BMI270_TEMPERATURE_0, (FAR uint8_t *)temp_data, 2);
-
-      //temp = (float)((((float)((int16_t)temp_data[0])) / 512.0) + 23.0);
-      const float lsb = 0.001953125f;
-      temp = 23.0f + (int16_t)temp_data[0] * lsb;
-
-      /* Read accel */
-
-      if (accel->enabled)
-        {
-          bmi270_accel_data(accel, &accel_data[0], temp);
-        }
-
-      /* Read gyro */
-
-      if (gyro->enabled)
-        {
-          bmi270_gyro_data(gyro, &accel_data[3], temp);
-        }
-
-      /* Sleeping thread before fetching the next sensor data */
-
-      min_interval = MIN(accel->interval, gyro->interval);
-      nxsig_usleep(min_interval);
-    }
+  bmi270_accel_enable(priv, enable);
 
   return OK;
-#else
+}
+
+/* Sensor poll functions */
+
+/****************************************************************************
+ * Name: bmi270_accel_worker
+ *
+ * Description:
+ *   Task the worker with retrieving the latest sensor data. We should not do
+ *   this in a interrupt since it might take too long. Also we cannot lock
+ *   the I2C bus from within an interrupt.
+ *
+ * Input Parameters:
+ *   arg    - Device struct.
+ *
+ * Returned Value:
+ *   none.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
+ ****************************************************************************/
+
+static void bmi270_accel_worker(FAR void *arg)
+{
+  FAR struct bmi270_dev_uorb_s *priv = arg;
+  struct sensor_accel accel;
+  struct accel_t p;
+  uint32_t time;
+
+  DEBUGASSERT(priv != NULL);
+
   work_queue(HPWORK, &priv->work,
-    bmi270_thread, priv,
-    priv->interval / USEC_PER_TICK);
-#endif
+             bmi270_accel_worker, priv,
+             priv->interval / USEC_PER_TICK);
+
+  bmi270_getregs(&priv->dev, BMI270_DATA_8, (FAR uint8_t *)&p, 6);
+  accel.x = p.x;
+  accel.y = p.y;
+  accel.z = p.z;
+
+  bmi270_getregs(&priv->dev, BMI270_TEMPERATURE_0, (FAR uint8_t *)&p, 2);
+  accel.temperature = 0; // TODO
+
+  bmi270_getregs(&priv->dev, BMI270_SENSORTIME_0, (FAR uint8_t *)&time, 3);
+
+  /* Adjust sensing time into 24 bit */
+
+  time >>= 8;
+  accel.timestamp = time;
+
+  priv->lower.push_event(priv->lower.priv, &accel, sizeof(accel));
 }
+
+/****************************************************************************
+ * Name: bmi270_gyro_worker
+ *
+ * Description:
+ *   Task the worker with retrieving the latest sensor data. We should not do
+ *   this in a interrupt since it might take too long. Also we cannot lock
+ *   the I2C bus from within an interrupt.
+ *
+ * Input Parameters:
+ *   arg    - Device struct.
+ *
+ * Returned Value:
+ *   none.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
+ ****************************************************************************/
+
+static void bmi270_gyro_worker(FAR void *arg)
+{
+  FAR struct bmi270_dev_uorb_s *priv = arg;
+  struct sensor_gyro gyro;
+  struct gyro_t p;
+  uint32_t time;
+
+  DEBUGASSERT(priv != NULL);
+
+  work_queue(HPWORK, &priv->work,
+             bmi270_gyro_worker, priv,
+             priv->interval / USEC_PER_TICK);
+
+  bmi270_getregs(&priv->dev, BMI270_DATA_14, (FAR uint8_t *)&p, 6);
+  gyro.x = p.x;
+  gyro.y = p.y;
+  gyro.z = p.z;
+
+  bmi270_getregs(&priv->dev, BMI270_SENSORTIME_0, (FAR uint8_t *)&time, 3);
+
+  /* Adjust sensing time into 24 bit */
+
+  time >>= 8;
+  gyro.timestamp = time;
+
+  priv->lower.push_event(priv->lower.priv, &gyro, sizeof(gyro));
+}
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: bmi270_register_accel
+ *
+ * Description:
+ *   Register the BMI270 accel sensor.
+ *
+ * Input Parameters:
+ *   devno   - Sensor device number.
+ *   config  - Interrupt fuctions.
+ *
+ * Returned Value:
+ *   Description of the value returned by this function (if any),
+ *   including an enumeration of all possible error values.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_SENSORS_BMI270_I2C
+static int bmi270_register_accel(int devno,
+                                 FAR struct i2c_master_s *dev)
+#else /* CONFIG_BMI270_SPI */
+static int bmi270_register_accel(int devno,
+                                 FAR struct spi_dev_s *dev)
 #endif
+{
+  FAR struct bmi270_dev_uorb_s *priv;
+  int ret;
+
+  /* Sanity check */
+
+  DEBUGASSERT(dev != NULL);
+
+  priv = kmm_zalloc(sizeof(*priv));
+  if (priv == NULL)
+    {
+      return -ENOMEM;
+    }
+
+  /* config accelerometer */
+
+#ifdef CONFIG_SENSORS_BMI270_I2C
+  priv->dev.i2c  = dev;
+  priv->dev.addr = BMI270_I2C_ADDR;
+  priv->dev.freq = BMI270_I2C_FREQ;
+
+#else /* CONFIG_SENSORS_BMI270_SPI */
+  priv->dev.spi = dev;
+
+  /* BMI270 detects communication bus is SPI by rising edge of CS. */
+  bmi270_getreg8(&priv->dev, 0x7f);
+  bmi270_getreg8(&priv->dev, 0x7f); /* workaround: fail to switch SPI, run twice */
+  nxsig_usleep(200);
+#endif
+
+  priv->lower.ops = &g_bmi270_accel_ops;
+  priv->lower.type = SENSOR_TYPE_ACCELEROMETER_UNCALIBRATED;
+  priv->interval = BMI270_DEFAULT_INTERVAL;
+  priv->lower.nbuffer = 1;
+
+  /* Read and verify the deviceid */
+
+  ret = bmi270_checkid(&priv->dev);
+  if (ret < 0)
+    {
+      snerr("Wrong Device ID!\n");
+      kmm_free(priv);
+      return ret;
+    }
+
+  /* set sensor power mode */
+
+  //bmi160_putreg8(&priv->dev, BMI160_PMU_TRIGGER, 0);
+
+  /* Register the character driver */
+
+  ret = sensor_register(&priv->lower, devno);
+  if (ret < 0)
+    {
+      snerr("Failed to register accel driver: %d\n", ret);
+      kmm_free(priv);
+    }
+
+  return ret;
+}
+
+/****************************************************************************
+ * Name: bmi270_register_gyro
+ *
+ * Description:
+ *   Register the BMI270 gyro sensor.
+ *
+ * Input Parameters:
+ *   devno   - Sensor device number.
+ *   config  - Interrupt fuctions.
+ *
+ * Returned Value:
+ *   Description of the value returned by this function (if any),
+ *   including an enumeration of all possible error values.
+ *
+ * Assumptions/Limitations:
+ *   none.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_SENSORS_BMI270_I2C
+static int bmi270_register_gyro(int devno,
+                                FAR struct i2c_master_s *dev)
+#else /* CONFIG_BMI270_SPI */
+static int bmi270_register_gyro(int devno,
+                                FAR struct spi_dev_s *dev)
+#endif
+{
+  FAR struct bmi270_dev_uorb_s *priv;
+  int ret ;
+
+  /* Sanity check */
+
+  DEBUGASSERT(dev != NULL);
+
+  /* Initialize the device structure */
+
+  priv = kmm_zalloc(sizeof(*priv));
+  if (priv == NULL)
+    {
+      return -ENOMEM;
+    }
+
+  /* config gyroscope */
+
+#ifdef CONFIG_SENSORS_BMI270_I2C
+  priv->dev.i2c  = dev;
+  priv->dev.addr = BMI270_I2C_ADDR;
+  priv->dev.freq = BMI270_I2C_FREQ;
+
+#else /* CONFIG_SENSORS_BMI270_SPI */
+  priv->dev.spi = dev;
+
+  /* BMI270 detects communication bus is SPI by rising edge of CS. */
+  bmi270_getreg8(&priv->dev, 0x7f);
+  bmi270_getreg8(&priv->dev, 0x7f); /* workaround: fail to switch SPI, run twice */
+  nxsig_usleep(200);
+#endif
+
+  priv->lower.ops = &g_bmi270_gyro_ops;
+  priv->lower.type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
+  priv->interval = BMI270_DEFAULT_INTERVAL;
+  priv->lower.nbuffer = 1;
+
+  /* Read and verify the deviceid */
+
+  ret = bmi270_checkid(&priv->dev);
+  if (ret < 0)
+    {
+      snerr("Wrong Device ID!\n");
+      kmm_free(priv);
+      return ret;
+    }
+
+  /* set sensor power mode */
+
+  //bmi270_putreg8(&priv->dev, BMI270_PMU_TRIGGER, 0);
+
+  /* Register the character driver */
+
+  ret = sensor_register(&priv->lower, devno);
+  if (ret < 0)
+    {
+      snerr("Failed to register gyro driver: %d\n", ret);
+      kmm_free(priv);
+    }
+
+  return ret;
+}
 
 /****************************************************************************
  * Public Functions
@@ -604,174 +728,38 @@ static int bmi270_thread(int argc, FAR char **argv)
  * Name: bmi270_register_uorb
  *
  * Description:
- *   Register the BMI270 IMU as sensor device
+ *   Register the BMI270 accel and gyro sensor.
  *
  * Input Parameters:
- *   devno   - Instance number for driver
+ *   devno   - Sensor device number.
+ *   dev     - An instance of the SPI or I2C interface to use to communicate
+ *             with BMI270
  *
  * Returned Value:
- *   Zero (OK) on success; a negated errno value on failure.
+ *   Description of the value returned by this function (if any),
+ *   including an enumeration of all possible error values.
+ *
+ * Assumptions/Limitations:
+ *   none.
  *
  ****************************************************************************/
 
 #ifdef CONFIG_SENSORS_BMI270_I2C
-int bmi270_register_uorb(int devno, FAR struct i2c_master_s *i2c,
-                         uint8_t addr)
-#else /* CONFIG_SENSORS_BMI270_SPI */
-int bmi270_register_uorb(int devno, FAR struct spi_dev_s *spi)
+int bmi270_register_uorb(int devno, FAR struct i2c_master_s *dev)
+#else /* CONFIG_BMI270_SPI */
+int bmi270_register_uorb(int devno, FAR struct spi_dev_s *dev)
 #endif
 {
-  FAR struct bmi270_sensor_dev_s *dev = NULL;
-  FAR struct bmi270_sensor_s     *tmp = NULL;
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  FAR char                       *argv[2];
-  char                            arg1[32];
-#endif
-  int                             ret = OK;
+  int ret;
 
-  /* Initialize the device structure. */
+  ret = bmi270_register_accel(devno, dev);
+  DEBUGASSERT(ret >= 0);
 
-  dev = (FAR struct bmi270_sensor_dev_s *)kmm_malloc(sizeof(*dev));
-  if (dev == NULL)
-    {
-      snerr("ERROR: Failed to allocate instance\n");
-      return -ENOMEM;
-    }
+  ret = bmi270_register_gyro(devno, dev);
+  DEBUGASSERT(ret >= 0);
 
-  memset(dev, 0, sizeof(*dev));
-  nxmutex_init(&dev->lock);
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  nxsem_init(&dev->run, 0, 0);
-#endif
-
-  /* Accelerometer register */
-
-  tmp                = &dev->priv[BMI270_ACCEL_IDX];
-  tmp->dev           = dev;
-#ifdef CONFIG_SENSORS_BMI270_I2C
-  tmp->base.i2c      = i2c;
-  tmp->base.addr     = addr;
-#else
-  tmp->base.spi      = spi;
-#endif
-  tmp->lower.ops     = &g_sensor_ops;
-  tmp->lower.type    = SENSOR_TYPE_ACCELEROMETER;
-  tmp->lower.nbuffer = 1;
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  tmp->enabled       = false;
-  tmp->interval      = CONFIG_SENSORS_BMI270_POLL_INTERVAL;
-#endif
-
-  ret = sensor_register(&tmp->lower, devno);
-  if (ret < 0)
-    {
-      snerr("sensor_register failed: %d\n", ret);
-      goto gyro_err;
-    }
-
-  /* Gyroscope register */
-
-  tmp                = &dev->priv[BMI270_GYRO_IDX];
-  tmp->dev           = dev;
-#ifdef CONFIG_SENSORS_BMI270_I2C
-  tmp->base.i2c      = i2c;
-  tmp->base.addr     = addr;
-#else
-  tmp->base.spi      = spi;
-#endif
-  tmp->lower.ops     = &g_sensor_ops;
-  tmp->lower.type    = SENSOR_TYPE_GYROSCOPE;
-  tmp->lower.nbuffer = 1;
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  tmp->enabled       = false;
-  tmp->interval      = CONFIG_SENSORS_BMI270_POLL_INTERVAL;
-#endif
-
-  ret = sensor_register(&tmp->lower, devno);
-  if (ret < 0)
-    {
-      snerr("sensor_register failed: %d\n", ret);
-      goto gyro_err;
-    }
-
-#ifdef CONFIG_SENSORS_BMI270_SPI
-  /* BMI270 detects communication bus is SPI by rising edge of CS. */
-
-  bmi270_getreg8(&tmp->base, 0x00);
-  bmi270_getreg8(&tmp->base, 0x00);
-  up_udelay(200);
-#endif
-
-  /* Check Device ID */
-
-  ret = bmi270_checkid(&tmp->base);
-  if (ret < 0)
-    {
-      snerr("ERROR: Wrong device ID!\n");
-      goto err_init;
-    }
-
-  /* Initialization sequence */
-
-  ret = bmi270_init_seq(&tmp->base);
-  if (ret != 0)
-    {
-      return ret;
-    }
-
-  /* Set default scale */
-
-  bmi270_accel_scale(&dev->priv[BMI270_ACCEL_IDX], 2);
-  bmi270_gyro_scale(&dev->priv[BMI270_GYRO_IDX], 2000);
-
-#if 0
-  volatile uint8_t regval;
-  bmi270_putreg8(&tmp->base, BMI270_INT1_IO_CTRL, 0x0A);
-  regval = bmi270_getreg8(&tmp->base, BMI270_INT1_IO_CTRL);
-  //_info("BMI270_INT1_IO_CTRL: 0x%02x\n", regval);
-
-  bmi270_putreg8(&tmp->base, BMI270_INT1_MAP_FEAT, 0x40);
-  regval = bmi270_getreg8(&tmp->base, BMI270_INT1_MAP_FEAT);
-  //_info("BMI270_INT1_MAP_FEAT: 0x%02x\n", regval);
-
-  bmi270_putreg8(&tmp->base, BMI270_INT_MAP_DATA, 0x04);
-  regval = bmi270_getreg8(&tmp->base, BMI270_INT_MAP_DATA);
-  //_info("BMI270_INT_MAP_DATA: 0x%02x\n", regval);
-#endif
-
-#if 1
-#ifdef CONFIG_SENSORS_BMI270_POLL
-  /* Create thread for polling sensor data */
-
-  snprintf(arg1, 16, "%p", dev);
-  argv[0] = arg1;
-  argv[1] = NULL;
-
-  ret = kthread_create("bmi270_thread", SCHED_PRIORITY_DEFAULT,
-                       CONFIG_SENSORS_BMI270_THREAD_STACKSIZE,
-                       bmi270_thread,
-                       argv);
-  if (ret < 0)
-    {
-      goto thr_err;
-    }
-#endif
-#endif
-
-  return ret;
-
-#ifdef CONFIG_SENSORS_BMI270_POLL
-thr_err:
-#endif
-#ifdef AUX_MAG_SUPPORTED
-  sensor_unregister(&dev->priv[BMI270_MAG_IDX].lower, devno);
-mag_err:
-#endif
-  sensor_unregister(&dev->priv[BMI270_GYRO_IDX].lower, devno);
-gyro_err:
-  sensor_unregister(&dev->priv[BMI270_ACCEL_IDX].lower, devno);
-err_init:
-  kmm_free(dev);
-
+  sninfo("BMI270 driver loaded successfully!\n");
   return ret;
 }
+
+#endif /* CONFIG_SENSORS_BMI270_UORB */
