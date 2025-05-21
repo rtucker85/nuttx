@@ -39,6 +39,7 @@
 
 struct ads131_dev_s
 {
+  FAR struct ads131_config_s *config;
   struct spi_dev_s *spi; /* Cached SPI device reference */
   int devno;
   int refs;
@@ -121,11 +122,6 @@ static const struct adc_ops_s ads131_ops_s =
     ads131_shutdown, /* ao_shutdown */
     ads131_rxint,    /* ao_rxint */
     ads131_ioctl     /* ao_read */
-  };
-
-static struct adc_dev_s g_ads131dev =
-  {
-    &ads131_ops_s,
   };
 
 /* clang-format on */
@@ -1405,11 +1401,12 @@ static int ads131_get_samples(struct adc_dev_s *dev, int32_t *samples,
 
 static void ads131_worker(FAR void *arg)
 {
-
+  syslog(LOG_ERR, "ads131_worker");
 }
 
 static int ads131_interrupt(int irq, FAR void *context, FAR void *arg)
 {
+  syslog(LOG_ERR, "ads131_interrupt");
   //FAR struct ads131_dev_s *priv =
   //  (FAR struct ads131_dev_s *)g_adcdev.ad_priv;
 //
@@ -1422,14 +1419,13 @@ static int ads131_interrupt(int irq, FAR void *context, FAR void *arg)
  * Public Functions
  ****************************************************************************/
 
-struct adc_dev_s *ads131_initialize(FAR struct spi_dev_s *spi,
-                                    unsigned int devno)
+struct adc_dev_s *ads131_initialize(struct ads131_config_s *config, unsigned int devno)
 {
   int ret;
 
   atrace("%s Entered.", __func__);
 
-  DEBUGASSERT(spi != NULL);
+  DEBUGASSERT(config->spi != NULL);
 
   struct ads131_dev_s *ads131_priv
       = (struct ads131_dev_s *)kmm_zalloc(sizeof(struct ads131_dev_s));
@@ -1448,9 +1444,10 @@ struct adc_dev_s *ads131_initialize(FAR struct spi_dev_s *spi,
       return NULL;
     }
 
-  ads131_priv->spi = spi;
+  ads131_priv->config = config;
+  ads131_priv->spi = config->spi;
   ads131_priv->devno = devno;
-  ads131_priv->frequency = 8000000;
+  ads131_priv->frequency = config->frequency;
   ads131_priv->reset_gpio = 0;
 
   ret = nxmutex_init(&ads131_priv->devlock);
@@ -1465,9 +1462,11 @@ struct adc_dev_s *ads131_initialize(FAR struct spi_dev_s *spi,
   dev->ad_priv = ads131_priv;
   dev->ad_ops = &ads131_ops_s;
 
-  /*  Initialize internal 'registerMap' array with device
-   * default settings
-   */
+  //DEBUGASSERT(ads131_priv->config->irq_attach != NULL);
+  //ads131_priv->config->irq_attach(ads131_priv->config, ads131_interrupt, ads131_priv);
+
+  //DEBUGASSERT(ads131_priv->config->irq_enable != NULL);
+  //ads131_priv->config->irq_enable(ads131_priv->config, false);
 
   ads131_restore_register_defaults(ads131_priv);
 
