@@ -504,7 +504,7 @@ static void adc_reset(FAR struct adc_dev_s *dev)
   ****************************************************************************/
  
  /****************************************************************************
-  * Name: ads1255_initialize
+  * Name: ads131m0x_initialize
   *
   * Description:
   *   Initialize the selected adc port
