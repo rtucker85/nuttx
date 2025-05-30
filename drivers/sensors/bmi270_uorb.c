@@ -26,6 +26,7 @@
 
 #include "bmi270_base.h"
 #include <sys/param.h>
+#include <math.h>
 #include <nuttx/wqueue.h>
 #include <nuttx/signal.h>
 #include <nuttx/sensors/sensor.h>
@@ -37,6 +38,7 @@
  ****************************************************************************/
 
 #define BMI270_DEFAULT_INTERVAL   10000  /* Default conversion interval. */
+#define CONSTANTS_ONE_G           9.806650f
 
 /****************************************************************************
  * Private Types
@@ -60,6 +62,7 @@ struct bmi270_dev_uorb_s
 
   struct work_s work;                   /* Interrupt handler worker. */
   uint32_t interval;                    /* Sensor acquisition interval. */
+  float scale;
 
   struct bmi270_dev_s dev;
 };
@@ -74,6 +77,11 @@ static void bmi270_accel_enable(FAR struct bmi270_dev_uorb_s *priv,
                                 bool enable);
 static void bmi270_gyro_enable(FAR struct bmi270_dev_uorb_s *priv,
                                bool enable);
+
+static int bmi270_accel_scale(FAR struct bmi270_dev_uorb_s *priv,
+                              uint8_t scale);
+static int bmi270_gyro_scale(FAR struct bmi270_dev_uorb_s *priv,
+                              uint16_t scale);
 
 /* Sensor ops functions */
 
@@ -90,6 +98,13 @@ static int bmi270_gyro_activate(FAR struct sensor_lowerhalf_s *lower,
                                 FAR struct file *filep,
                                 bool enable);
 
+static int bmi270_accel_control(FAR struct sensor_lowerhalf_s *lower,
+                                FAR struct file *filep,
+                                int cmd, unsigned long arg);
+static int bmi270_gyro_control(FAR struct sensor_lowerhalf_s *lower,
+                                FAR struct file *filep,
+                                int cmd, unsigned long arg);
+
 /* Sensor poll functions */
 
 static void bmi270_accel_worker(FAR void *arg);
@@ -97,6 +112,10 @@ static void bmi270_gyro_worker(FAR void *arg);
 static int bmi270_findodr(uint32_t time,
                           FAR const struct bmi270_odr_s *odr_s,
                           int len);
+
+/* Helpers */
+
+static uint32_t bmi270_midpoint(uint32_t a, uint32_t b);
 
 /****************************************************************************
  * Private Data
@@ -106,12 +125,14 @@ static const struct sensor_ops_s g_bmi270_accel_ops =
 {
   .activate     = bmi270_accel_activate,      /* Enable/disable sensor. */
   .set_interval = bmi270_set_accel_interval,  /* Set output data period. */
+  .control      = bmi270_accel_control,
 };
 
 static const struct sensor_ops_s g_bmi270_gyro_ops =
 {
   .activate     = bmi270_gyro_activate,      /* Enable/disable sensor. */
   .set_interval = bmi270_set_gyro_interval,  /* Set output data period. */
+  .control      = bmi270_gyro_control,
 };
 
 static const struct bmi270_odr_s g_bmi270_gyro_odr[] =
@@ -208,13 +229,13 @@ static void bmi270_accel_enable(FAR struct bmi270_dev_uorb_s *priv,
     {
       /* Set accel as normal mode. */
 
-      //bmi270_putreg8(&priv->dev, BMI270_PWR_CONF, ACCEL_PM_NORMAL);
+      bmi270_putreg8(&priv->dev, BMI270_PWR_CONF, 0);
       nxsig_usleep(30000);
 
       idx = bmi270_findodr(priv->interval, g_bmi270_accel_odr,
                            nitems(g_bmi270_accel_odr));
       bmi270_putreg8(&priv->dev, BMI270_ACC_CONFIG,
-                     ACCEL_NORMAL_AVG4 | g_bmi270_accel_odr[idx].regval);
+                     ACCEL_NORMAL_AVG4 | 0x80 | g_bmi270_accel_odr[idx].regval);
 
       work_queue(HPWORK, &priv->work,
                  bmi270_accel_worker, priv,
@@ -225,7 +246,7 @@ static void bmi270_accel_enable(FAR struct bmi270_dev_uorb_s *priv,
       /* Set suspend mode to sensors. */
 
       work_cancel(HPWORK, &priv->work);
-      //bmi270_putreg8(&priv->dev, BMI270_PWR_CONF, ACCEL_PM_SUSPEND);
+      bmi270_putreg8(&priv->dev, BMI270_PWR_CONF, 1);
     }
 }
 
@@ -259,13 +280,13 @@ static void bmi270_gyro_enable(FAR struct bmi270_dev_uorb_s *priv,
     {
       /* Set gyro as normal mode. */
 
-      //bmi270_putreg8(&priv->dev, BMI270_PWR_CONF, GYRO_PM_NORMAL);
+      bmi270_putreg8(&priv->dev, BMI270_PWR_CONF, 0);
       nxsig_usleep(30000);
 
       idx = bmi270_findodr(priv->interval, g_bmi270_gyro_odr,
                            nitems(g_bmi270_gyro_odr));
       bmi270_putreg8(&priv->dev, BMI270_GYR_CONFIG,
-                    GYRO_NORMAL_MODE | g_bmi270_gyro_odr[idx].regval);
+                    0x0E | g_bmi270_gyro_odr[idx].regval);
 
       work_queue(HPWORK, &priv->work,
                  bmi270_gyro_worker, priv,
@@ -277,8 +298,93 @@ static void bmi270_gyro_enable(FAR struct bmi270_dev_uorb_s *priv,
 
       /* Set suspend mode to sensors. */
 
-      //bmi270_putreg8(&priv->dev, BMI270_PWR_CONF, GYRO_PM_SUSPEND);
+      bmi270_putreg8(&priv->dev, BMI270_PWR_CONF, 1);
     }
+}
+
+/****************************************************************************
+ * Name: bmi270_midpoint
+ *
+ * Description:
+ *   Find the midpoint between two numbers.
+ *
+ ****************************************************************************/
+
+static uint32_t bmi270_midpoint(uint32_t a, uint32_t b)
+{
+  return (uint32_t)(((uint64_t)a +
+                     (uint64_t)b + (uint64_t)1) / (uint64_t)2);
+}
+
+/****************************************************************************
+ * Name: bmi270_accel_scale
+ ****************************************************************************/
+
+static int bmi270_accel_scale(FAR struct bmi270_dev_uorb_s *priv,
+                              uint8_t scale)
+{
+  int ret = OK;
+
+  if (scale < bmi270_midpoint(2, 4))
+    {
+      bmi270_putreg8(&priv->dev, BMI270_ACC_RANGE, ACCEL_RANGE_2G);
+      priv->scale = CONSTANTS_ONE_G / 16384.f;
+    }
+  else if (scale < bmi270_midpoint(4, 8))
+    {
+      bmi270_putreg8(&priv->dev, BMI270_ACC_RANGE, ACCEL_RANGE_4G);
+      priv->scale = CONSTANTS_ONE_G / 8192.f;
+    }
+  else if (scale < bmi270_midpoint(8, 16))
+    {
+      bmi270_putreg8(&priv->dev, BMI270_ACC_RANGE, ACCEL_RANGE_8G);
+      priv->scale = CONSTANTS_ONE_G / 4096.f;
+    }
+  else
+    {
+      bmi270_putreg8(&priv->dev, BMI270_ACC_RANGE, ACCEL_RANGE_16G);
+      priv->scale = CONSTANTS_ONE_G / 2048.f;
+    }
+
+  return ret;
+}
+
+/****************************************************************************
+ * Name: bmi270_gyro_scale
+ ****************************************************************************/
+
+static int bmi270_gyro_scale(FAR struct bmi270_dev_uorb_s *priv,
+                              uint16_t scale)
+{
+  int ret = OK;
+
+  if (scale < bmi270_midpoint(125, 250))
+    {
+      bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_125);
+      priv->scale = (M_PI / 180.0f) * 125.f / 32768.f;
+    }
+  else if (scale < bmi270_midpoint(250, 500))
+    {
+      bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_250);
+      priv->scale = (M_PI / 180.0f) * 250.f / 32768.f;
+    }
+  else if (scale < bmi270_midpoint(500, 1000))
+    {
+      bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_500);
+      priv->scale = (M_PI / 180.0f) * 500.f / 32768.f;
+    }
+  else if (scale < bmi270_midpoint(1000, 2000))
+    {
+      bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_1000);
+      priv->scale = (M_PI / 180.0f) * 1000.f / 32768.f;
+    }
+  else
+    {
+      bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_2000);
+      priv->scale = (M_PI / 180.0f) * 2000.f / 32768.f;
+    }
+
+  return ret;
 }
 
 /****************************************************************************
@@ -321,7 +427,7 @@ static int bmi270_set_accel_interval(FAR struct sensor_lowerhalf_s *lower,
   num = bmi270_findodr(*period_us, g_bmi270_accel_odr,
                        nitems(g_bmi270_accel_odr));
   bmi270_putreg8(&priv->dev, BMI270_ACC_CONFIG,
-                 ACCEL_NORMAL_AVG4 | g_bmi270_accel_odr[num].regval);
+                 ACCEL_NORMAL_AVG4 | 0x80 | g_bmi270_accel_odr[num].regval);
 
   priv->interval = g_bmi270_accel_odr[num].odr;
   *period_us = priv->interval;
@@ -368,7 +474,7 @@ static int bmi270_set_gyro_interval(FAR struct sensor_lowerhalf_s *lower,
   num = bmi270_findodr(*period_us, g_bmi270_gyro_odr,
                        nitems(g_bmi270_gyro_odr));
   bmi270_putreg8(&priv->dev, BMI270_GYR_CONFIG,
-                 GYRO_NORMAL_MODE | g_bmi270_gyro_odr[num].regval);
+                 0x0E | g_bmi270_gyro_odr[num].regval);
 
   priv->interval = g_bmi270_gyro_odr[num].odr;
   *period_us = priv->interval;
@@ -441,6 +547,26 @@ static int bmi270_accel_activate(FAR struct sensor_lowerhalf_s *lower,
   return OK;
 }
 
+static int bmi270_accel_control(FAR struct sensor_lowerhalf_s *lower,
+                                FAR struct file *filep,
+                                int cmd, unsigned long arg)
+{
+  int ret;
+  FAR struct bmi270_dev_uorb_s *priv = (FAR struct bmi270_dev_uorb_s *)lower;
+  ret = bmi270_accel_scale(priv, arg);
+  return ret;
+}
+
+static int bmi270_gyro_control(FAR struct sensor_lowerhalf_s *lower,
+                                FAR struct file *filep,
+                                int cmd, unsigned long arg)
+{
+  int ret;
+  FAR struct bmi270_dev_uorb_s *priv = (FAR struct bmi270_dev_uorb_s *)lower;
+  ret = bmi270_gyro_scale(priv, arg);
+  return ret;
+}
+
 /* Sensor poll functions */
 
 /****************************************************************************
@@ -477,12 +603,12 @@ static void bmi270_accel_worker(FAR void *arg)
              priv->interval / USEC_PER_TICK);
 
   bmi270_getregs(&priv->dev, BMI270_DATA_8, (FAR uint8_t *)&p, 6);
-  accel.x = p.x;
-  accel.y = p.y;
-  accel.z = p.z;
+  accel.x = p.x * priv->scale;
+  accel.y = p.y * priv->scale;
+  accel.z = p.z * priv->scale;
 
   bmi270_getregs(&priv->dev, BMI270_TEMPERATURE_0, (FAR uint8_t *)&temp, 2);
-  accel.temperature = (float)(temp = 23.0f + (int16_t)temp * 0.001953125f);
+  accel.temperature = (float)((((float)((int16_t)temp)) / 512.0) + 23.0);
 
   bmi270_getregs(&priv->dev, BMI270_SENSORTIME_0, (FAR uint8_t *)&time, 3);
   accel.timestamp = time >> 8;
@@ -524,12 +650,12 @@ static void bmi270_gyro_worker(FAR void *arg)
              priv->interval / USEC_PER_TICK);
 
   bmi270_getregs(&priv->dev, BMI270_DATA_14, (FAR uint8_t *)&p, 6);
-  gyro.x = p.x;
-  gyro.y = p.y;
-  gyro.z = p.z;
+  gyro.x = p.x * priv->scale;
+  gyro.y = p.y * priv->scale;
+  gyro.z = p.z * priv->scale;
 
   bmi270_getregs(&priv->dev, BMI270_TEMPERATURE_0, (FAR uint8_t *)&temp, 2);
-  gyro.temperature = (float)(temp = 23.0f + (int16_t)temp * 0.001953125f);
+  gyro.temperature = (float)((((float)((int16_t)temp)) / 512.0) + 23.0);
 
   bmi270_getregs(&priv->dev, BMI270_SENSORTIME_0, (FAR uint8_t *)&time, 3);
   gyro.timestamp = time >> 8;
@@ -598,7 +724,7 @@ static int bmi270_register_accel(int devno,
 #endif
 
   priv->lower.ops = &g_bmi270_accel_ops;
-  priv->lower.type = SENSOR_TYPE_ACCELEROMETER_UNCALIBRATED;
+  priv->lower.type = SENSOR_TYPE_ACCELEROMETER;
   priv->interval = BMI270_DEFAULT_INTERVAL;
   priv->lower.nbuffer = 1;
 
@@ -614,7 +740,17 @@ static int bmi270_register_accel(int devno,
 
   /* set sensor power mode */
 
-  //bmi270_putreg8(&priv->dev, BMI160_PMU_TRIGGER, 0);
+  bmi270_init_seq(&priv->dev);
+
+  /* Set default scale */
+
+  bmi270_accel_scale(priv, 2);
+
+  uint8_t pwr_ctrl = bmi270_getreg8(&priv->dev, BMI270_PWR_CTRL);
+  pwr_ctrl |= PWRCTRL_ACC_EN;
+  bmi270_putreg8(&priv->dev, BMI270_PWR_CTRL, pwr_ctrl);
+  bmi270_putreg8(&priv->dev, BMI270_ACC_CONFIG,
+                 ACCEL_NORMAL_AVG4 | 0x80 | ACCEL_ODR_200HZ);
 
   /* Register the character driver */
 
@@ -687,7 +823,7 @@ static int bmi270_register_gyro(int devno,
 #endif
 
   priv->lower.ops = &g_bmi270_gyro_ops;
-  priv->lower.type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
+  priv->lower.type = SENSOR_TYPE_GYROSCOPE;
   priv->interval = BMI270_DEFAULT_INTERVAL;
   priv->lower.nbuffer = 1;
 
@@ -701,9 +837,17 @@ static int bmi270_register_gyro(int devno,
       return ret;
     }
 
+  /* Set default scale */
+
+  bmi270_gyro_scale(priv, 2000);
+
   /* set sensor power mode */
 
-  //bmi270_putreg8(&priv->dev, BMI270_PMU_TRIGGER, 0);
+  uint8_t pwr_ctrl = bmi270_getreg8(&priv->dev, BMI270_PWR_CTRL);
+  pwr_ctrl |= PWRCTRL_GYR_EN;
+  bmi270_putreg8(&priv->dev, BMI270_PWR_CTRL, pwr_ctrl);
+  bmi270_putreg8(&priv->dev, BMI270_GYR_CONFIG,
+                 0x0E | GYRO_ODR_200HZ);
 
   /* Register the character driver */
 
