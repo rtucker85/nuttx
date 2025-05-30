@@ -1112,13 +1112,13 @@ int bmi270_checkid(FAR struct bmi270_dev_s *priv)
   /* Read device ID  */
 
   devid = bmi270_getreg8(priv, BMI270_CHIP_ID);
-  _info("devid: %02x\n", devid);
+  _info("devid: 0x%02x\n", devid);
 
   if (devid != (uint16_t) DEVID)
     {
       /* ID is not Correct */
 
-      _err("Wrong Device ID! %02x\n", devid);
+      _err("Wrong Device ID! 0x%02x\n", devid);
       return -ENODEV;
     }
 

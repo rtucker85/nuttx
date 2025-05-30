@@ -452,14 +452,14 @@ static int bmp280_checkid(FAR struct bmp280_dev_s *priv)
   /* Read device ID */
 
   devid = bmp280_getreg8(priv, BMP280_DEVID);
-  up_udelay(100);
+  //up_udelay(100);
   _info("devid: 0x%02x\n", devid);
 
   if (devid != (uint16_t) DEVID)
     {
       /* ID is not Correct */
 
-      _err("Wrong Device ID! %02x\n", devid);
+      _err("Wrong Device ID! 0x%02x\n", devid);
       return -ENODEV;
     }
 

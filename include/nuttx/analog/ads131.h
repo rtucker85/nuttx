@@ -417,7 +417,10 @@ struct ads131_config_s
 {
   struct spi_dev_s *spi;
   uint32_t frequency;
-  struct gpio_dev_s *reset_gpio;
+  CODE int  (*irq_attach)(FAR struct ads131_config_s * state, xcpt_t isr,
+                          FAR void *arg);
+  CODE void (*irq_enable)(FAR const struct ads131_config_s *state,
+                          bool enable);
 };
 
 struct ads131_adc_channel_data_s
@@ -442,7 +445,6 @@ struct ads131_adc_channel_data_s
  *
  ****************************************************************************/
 
- struct adc_dev_s *ads131_initialize(FAR struct spi_dev_s *spi,
-  unsigned int devno);
+struct adc_dev_s *ads131_initialize(struct ads131_config_s *config, unsigned int devno);
 
 #endif /* CONFIG_SPI && CONFIG_MOTEC_DRV_ADS131 */

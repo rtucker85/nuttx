@@ -140,7 +140,7 @@
 #define BMI270_OFFSET_6         (0x77)
 #define BMI270_PWR_CONF         (0x7C) /* Power mode configuration */
 #define BMI270_PWR_CTRL         (0x7D) /* Power mode control */
-#define BMI270_CMD              (0x7e) /* Command register */
+#define BMI270_CMD              (0x7E) /* Command register */
 
 /* Register 0x21 - INTERNAL_STATUS */
 
