@@ -88,6 +88,10 @@
 #define BMP280_DIG_H2_LSB   0xe1
 #define BMP280_DIG_H2_MSB   0xe2
 #define BMP280_DIG_H3_LSB   0xe3
+#define BMP280_DIG_H4_MSB   0xe4
+#define BMP280_DIG_H4_LSB   0xe5
+#define BMP280_DIG_H5_MSB   0xe6
+#define BMP280_DIG_H6_LSB   0xe7
 #define BMP280_CTRL_HUM     0xf2
 #define BMP280_STAT         0xf3
 #define BMP280_CTRL_MEAS    0xf4
@@ -139,8 +143,9 @@
 
 struct bmp280_dev_s
 {
-  FAR struct sensor_lowerhalf_s sensor_lower;
-  uint64_t last_update;
+  FAR struct sensor_lowerhalf_s baro_sensor_lower;
+  FAR struct sensor_lowerhalf_s humi_sensor_lower;
+  //uint64_t last_update;
   FAR struct spi_dev_s *spi;
   bool enabled;
   mutex_t lock;
@@ -545,12 +550,19 @@ static int bmp280_initialize(FAR struct bmp280_dev_s *priv)
   priv->calib.p8 = (int16_t) buf[21] << 8 | buf[20];
   priv->calib.p9 = (int16_t) buf[23] << 8 | buf[22];
 
-  ret = bmp280_getregs(priv, BMP280_DIG_H1_LSB, buf, 1);
+  priv->calib.h1 = bmp280_getreg8(priv, BMP280_DIG_H1_LSB);
+
+  ret = bmp280_getregs(priv, BMP280_DIG_H2_LSB, buf, 7);
   if (ret < 0)
     {
       return ret;
     }
-  priv->calib.h1 = buf[0];
+
+  priv->calib.h2 = (int16_t)buf[1] << 8 | buf[0];
+  priv->calib.h3 = buf[2];
+  priv->calib.h4 = (int16_t)((buf[3] << 4) | (buf[4] & 0x0F));
+  priv->calib.h5 = (int16_t)((buf[5] << 4) | (buf[4] >> 4));
+  priv->calib.h6 = (int8_t)buf[6];
 
 #if 0
   _info("T1 = %u\n", priv->calib.t1);
@@ -566,6 +578,13 @@ static int bmp280_initialize(FAR struct bmp280_dev_s *priv)
   _info("P7 = %d\n", priv->calib.p7);
   _info("P8 = %d\n", priv->calib.p8);
   _info("P9 = %d\n", priv->calib.p9);
+
+  _info("H1 = %u\n", priv->calib.h1);
+  _info("H2 = %d\n", priv->calib.h2);
+  _info("H3 = %d\n", priv->calib.h3);
+  _info("H4 = %d\n", priv->calib.h4);
+  _info("H5 = %d\n", priv->calib.h5);
+  _info("H6 = %d\n", priv->calib.h6);
 #endif
 
   bmp280_putreg8(priv, BMP280_CTRL_HUM, 1);
@@ -635,6 +654,8 @@ static double bmp280_compensate_temp_f(struct bmp280_dev_s *priv,
   int32_t temp)
 {
   struct bmp280_calib_s *c = &priv->calib;
+  double temperature_min = -40;
+  double temperature_max = 85;
   double var1, var2, T;
 
   var1 = (((double)temp)/16384.0 - ((double)c->t1)/1024.0) * ((double)c->t2);
@@ -642,6 +663,16 @@ static double bmp280_compensate_temp_f(struct bmp280_dev_s *priv,
     (((double)temp)/131072.0 - ((double)c->t1)/8192.0)) * ((double)c->t3);
   priv->tempfine = (int32_t)(var1 + var2);
   T = (var1 + var2) / 5120.0;
+
+  if (T < temperature_min)
+    {
+      T = temperature_min;
+    }
+  else if (T > temperature_max)
+    {
+      T = temperature_max;
+    }
+
   return T;
 }
 
@@ -719,6 +750,8 @@ static double bmp280_compensate_press_f(FAR struct bmp280_dev_s *priv,
 {
   struct bmp280_calib_s *c = &priv->calib;
   double var1, var2, p;
+  double pressure_min = 30000.0;
+  double pressure_max = 110000.0;
 
   var1 = ((double)priv->tempfine/2.0) - 64000.0;
   var2 = var1 * var1 * ((double)c->p6) / 32768.0;
@@ -728,18 +761,28 @@ static double bmp280_compensate_press_f(FAR struct bmp280_dev_s *priv,
   var1 = (1.0 + var1 / 32768.0)*((double)c->p1);
   if (var1 == 0.0)
   {
-    return 0; // avoid exception caused by division by zero
+    return pressure_min; // avoid exception caused by division by zero
   }
   p = 1048576.0 - (double)press;
   p = (p - (var2 / 4096.0)) * 6250.0 / var1;
   var1 = ((double)c->p9) * p * p / 2147483648.0;
   var2 = p * ((double)c->p8) / 32768.0;
   p = p + (var1 + var2 + ((double)c->p7)) / 16.0;
+
+  if (p < pressure_min)
+    {
+      p = pressure_min;
+    }
+  else if (p > pressure_max)
+    {
+      p = pressure_max;
+    }
+
   return p;
 }
 
 /****************************************************************************
- * Name: bmp280_compensate_hum
+ * Name: bmp280_compensate_hum_f
  *
  * Description:
  *   calculate compensate temperature
@@ -752,10 +795,25 @@ static double bmp280_compensate_press_f(FAR struct bmp280_dev_s *priv,
  *
  ****************************************************************************/
 
- static int32_t bmp280_compensate_hum(FAR struct bmp280_dev_s *priv,
-                                      int32_t hum)
+float bmp280_compensate_hum_f(struct bmp280_dev_s *priv, int32_t adc_H)
 {
-  return 0;
+  struct bmp280_calib_s *c = &priv->calib;
+    float var_H;
+
+    var_H = ((float)priv->tempfine) - 76800.0;
+    var_H = (adc_H - ((float)c->h4 * 64.0 + ((float)c->h5) / 16384.0 * var_H)) *
+            ((float)c->h2 / 65536.0 *
+            (1.0 + ((float)c->h6 / 67108864.0 * var_H *
+            (1.0 + ((float)c->h3 / 67108864.0 * var_H)))));
+
+    var_H = var_H * (1.0 - ((float)c->h1) * var_H / 524288.0);
+
+    if (var_H > 100.0)
+        var_H = 100.0;
+    else if (var_H < 0.0)
+        var_H = 0.0;
+
+    return var_H;
 }
 
 /****************************************************************************
@@ -768,7 +826,7 @@ static int bmp280_set_interval(FAR struct sensor_lowerhalf_s *lower,
 {
   FAR struct bmp280_dev_s *priv = container_of(lower,
                                                FAR struct bmp280_dev_s,
-                                               sensor_lower);
+                                               baro_sensor_lower);
 #ifdef CONFIG_SENSORS_BMP280_POLL
 priv->interval = *period_us;
 #else
@@ -824,7 +882,7 @@ static int bmp280_activate(FAR struct sensor_lowerhalf_s *lower,
 {
   FAR struct bmp280_dev_s *priv = container_of(lower,
                                                FAR struct bmp280_dev_s,
-                                               sensor_lower);
+                                               baro_sensor_lower);
   int ret;
 
   nxmutex_lock(&priv->lock);
@@ -931,8 +989,8 @@ static int bmp280_fetch(FAR struct sensor_lowerhalf_s *lower,
   clock_systime_timespec(&ts);
   baro_data.timestamp = 1000000ull * ts.tv_sec + ts.tv_nsec / 1000;
 
-  baro_data.temperature = bmp280_compensate_temp_f(priv, temp);
-  baro_data.pressure = bmp280_compensate_press_f(priv, press);
+  baro_data.temperature = bmp280_compensate_temp(priv, temp);
+  baro_data.pressure = bmp280_compensate_press(priv, press);
   baro_data.pressure /= 100.0f;
 
   memcpy(buffer, &baro_data, sizeof(baro_data));
@@ -961,14 +1019,14 @@ static int bmp280_thread(int argc, FAR char **argv)
   uint8_t buf[8];
   uint32_t press;
   int32_t temp;
-  uint32_t hum;
+  uint16_t hum;
   uint64_t now;
 
   FAR struct bmp280_dev_s *priv
-      = (FAR struct bmp280_dev_s *)((uintptr_t)strtoul(argv[1], NULL,
-                                                               16));
+      = (FAR struct bmp280_dev_s *)((uintptr_t)strtoul(argv[1], NULL, 16));
 
-  struct sensor_lowerhalf_s *lower = &priv->sensor_lower;
+  struct sensor_lowerhalf_s *baro_lower = &priv->baro_sensor_lower;
+  struct sensor_lowerhalf_s *humi_lower = &priv->humi_sensor_lower;
 
   while (true)
   {
@@ -986,18 +1044,19 @@ static int bmp280_thread(int argc, FAR char **argv)
     /* Read pressure & data */
     bmp280_getregs(priv, BMP280_PRESS_MSB, buf, 8);
 
-    //priv->last_update = now;
     baro.timestamp = now;
     humi.timestamp = now;
 
     press = (uint32_t)COMBINE(buf);
     temp = COMBINE(&buf[3]);
-    hum = (uint32_t)COMBINE(&buf[6]);
+    hum = (uint16_t)((buf[6] << 8) | buf[7]);
 
     baro.pressure = bmp280_compensate_press_f(priv, press) / 100.0f;
     baro.temperature = bmp280_compensate_temp_f(priv, temp);
-    //humi.humidity = bmp280_compensate_hum
-    lower->push_event(lower->priv, &baro, sizeof(baro));
+    baro_lower->push_event(baro_lower->priv, &baro, sizeof(baro));
+
+    humi.humidity = bmp280_compensate_hum_f(priv, hum);
+    humi_lower->push_event(humi_lower->priv, &humi, sizeof(humi));
 
     nxsig_usleep(priv->interval);
   }
@@ -1050,8 +1109,12 @@ int bmp280_register(int devno, FAR struct spi_dev_s *spi)
 
   nxmutex_init(&priv->lock);
   priv->spi = spi;
-  priv->sensor_lower.ops = &g_sensor_ops;
-  priv->sensor_lower.type = SENSOR_TYPE_BAROMETER;
+  priv->baro_sensor_lower.ops = &g_sensor_ops;
+  priv->baro_sensor_lower.type = SENSOR_TYPE_BAROMETER;
+  
+  priv->humi_sensor_lower.ops = &g_sensor_ops;
+  priv->humi_sensor_lower.type = SENSOR_TYPE_RELATIVE_HUMIDITY;
+
 #ifdef CONFIG_SENSORS_BMP280_POLL
   priv->enabled = false;
   priv->interval = CONFIG_SENSORS_BMP280_POLL_INTERVAL;
@@ -1080,7 +1143,8 @@ int bmp280_register(int devno, FAR struct spi_dev_s *spi)
 
   /* Register the character driver */
 
-  ret = sensor_register(&priv->sensor_lower, devno);
+  ret = sensor_register(&priv->baro_sensor_lower, devno);
+  ret = sensor_register(&priv->humi_sensor_lower, devno);
 
   if (ret < 0)
     {
