@@ -361,27 +361,27 @@ static int bmi270_gyro_scale(FAR struct bmi270_dev_uorb_s *priv,
   if (scale < bmi270_midpoint(125, 250))
     {
       bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_125);
-      priv->scale = (M_PI / 180.0f) * 125.f / 32768.f;
+      priv->scale = /*(M_PI / 180.0f)*/1 * 125.f / 32768.f;
     }
   else if (scale < bmi270_midpoint(250, 500))
     {
       bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_250);
-      priv->scale = (M_PI / 180.0f) * 250.f / 32768.f;
+      priv->scale = /*(M_PI / 180.0f)*/1 * 250.f / 32768.f;
     }
   else if (scale < bmi270_midpoint(500, 1000))
     {
       bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_500);
-      priv->scale = (M_PI / 180.0f) * 500.f / 32768.f;
+      priv->scale = /*(M_PI / 180.0f)*/1 * 500.f / 32768.f;
     }
   else if (scale < bmi270_midpoint(1000, 2000))
     {
       bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_1000);
-      priv->scale = (M_PI / 180.0f) * 1000.f / 32768.f;
+      priv->scale = /*(M_PI / 180.0f)*/1 * 1000.f / 32768.f;
     }
   else
     {
       bmi270_putreg8(&priv->dev, BMI270_GYR_RANGE, GYRO_RANGE_2000);
-      priv->scale = (M_PI / 180.0f) * 2000.f / 32768.f;
+      priv->scale = /*(M_PI / 180.0f)*/1 * 2000.f / 32768.f;
     }
 
   return ret;
