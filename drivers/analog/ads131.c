@@ -96,6 +96,10 @@ static uint16_t ads131_get_reg_val(struct ads131_dev_s *priv,
 static uint16_t ads131_read_single_register(struct adc_dev_s *dev,
                                             uint8_t address);
 static int ads131_trigger_sample(struct ads131_dev_s *priv);
+static int ads131_set_offset_cal(struct ads131_dev_s *priv,
+                                 int32_t offset);
+static int ads131_set_gain_cal(struct ads131_dev_s *priv,
+                               int32_t gain);
 
 #define SPI_DEV SPIDEV_ADC(priv->devno)
 
@@ -252,6 +256,16 @@ static int ads131_trigger_sample(struct ads131_dev_s *priv)
   return OK;
 }
 
+static int ads131_set_offset_cal(struct ads131_dev_s *priv, int32_t offset)
+{
+  return OK;
+}
+
+static int ads131_set_gain_cal(struct ads131_dev_s *priv, int32_t gain)
+{
+  return OK;
+}
+
 static int ads131_setup(struct adc_dev_s *dev)
 {
   struct ads131_dev_s *priv = (struct ads131_dev_s *)dev->ad_priv;
@@ -379,17 +393,52 @@ static void ads131_adc_startup(struct adc_dev_s *dev)
   //ads131_write_single_register(
   //    dev, ADS131_THRSHLD_LSB_ADDRESS, ADS131_THRSHLD_LSB_DEFAULT | 0x01);
 
+  // INPUT MUX - AGND
+  //ads131_write_single_register(
+  //    dev, ADS131_CH0_CFG_ADDRESS, ADS131_CH0_CFG_DEFAULT | 0x01);
+  //ads131_write_single_register(
+  //    dev, ADS131_CH1_CFG_ADDRESS, ADS131_CH1_CFG_DEFAULT | 0x01);
+
   // INPUT MUX - Positive DC Test
   //ads131_write_single_register(
   //    dev, ADS131_CH0_CFG_ADDRESS, ADS131_CH0_CFG_DEFAULT | 0x02);
+  //ads131_write_single_register(
+  //    dev, ADS131_CH1_CFG_ADDRESS, ADS131_CH1_CFG_DEFAULT | 0x02);
 
   // INPUT MUX - Negative DC Test
   //ads131_write_single_register(
+  //    dev, ADS131_CH0_CFG_ADDRESS, ADS131_CH0_CFG_DEFAULT | 0x03);
+  //ads131_write_single_register(
   //    dev, ADS131_CH1_CFG_ADDRESS, ADS131_CH1_CFG_DEFAULT | 0x03);
 
-  // CH1/2 - INPUT GAIN - 0
+#if 1
+  const uint32_t offset[4][2] = {
+    {10400, 12665},
+    {13203, 13539},
+    {5570,  11069},
+    {6144,  3974}
+  };
+  
+  uint32_t offset_val = offset[priv->devno][0]; 
+  uint16_t ocal_msb = (offset_val >> 8) & 0xFFFF;
+  uint16_t ocal_lsb = (offset_val & 0xFF) << 8;
   ads131_write_single_register(
-      dev, ADS131_GAIN1_ADDRESS, ADS131_GAIN1_DEFAULT | 0x00);
+      dev, ADS131_CH0_OCAL_MSB_ADDRESS, ocal_msb);
+  ads131_write_single_register(
+      dev, ADS131_CH0_OCAL_LSB_ADDRESS, ocal_lsb);
+
+  offset_val = offset[priv->devno][1]; 
+  ocal_msb = (offset_val >> 8) & 0xFFFF;
+  ocal_lsb = (offset_val & 0xFF) << 8;
+  ads131_write_single_register(
+      dev, ADS131_CH1_OCAL_MSB_ADDRESS, ocal_msb);
+  ads131_write_single_register(
+      dev, ADS131_CH1_OCAL_LSB_ADDRESS, ocal_lsb);
+#endif
+
+  // CH1/2 - INPUT GAIN - 16
+  ads131_write_single_register(
+      dev, ADS131_GAIN1_ADDRESS, ADS131_GAIN1_DEFAULT | 0x44);
 
   /* Trigger initial sample read. */
 
@@ -795,12 +844,27 @@ static int ads131_ioctl(FAR struct adc_dev_s *dev, int cmd,
 #endif
 
         ret = ads131_get_samples(dev, samples, ADS131_NUM_CHANNELS);
+        //aerr("%u\t%ld %ld\n", priv->devno, samples[0], samples[1]);
         nxmutex_unlock(&priv->devlock);
         break;
 
       case ANIOC_TRIGGER:
         nxmutex_lock(&priv->devlock);
         ret = ads131_trigger_sample(priv);
+        nxmutex_unlock(&priv->devlock);
+        break;
+
+      case ANIOC_ADS131_SET_OFFSET_CAL:
+        nxmutex_lock(&priv->devlock);
+        int32_t offset = (int32_t)arg;
+        ret = ads131_set_offset_cal(priv, offset);
+        nxmutex_unlock(&priv->devlock);
+        break;
+
+      case ANIOC_ADS131_SET_GAIN_CAL:
+        nxmutex_lock(&priv->devlock);
+        int32_t gain = (int32_t)arg;
+        ret = ads131_set_gain_cal(priv, gain);
         nxmutex_unlock(&priv->devlock);
         break;
 
