@@ -561,7 +561,7 @@ static int bmp280_initialize(FAR struct bmp280_dev_s *priv)
   priv->calib.h2 = (int16_t)buf[1] << 8 | buf[0];
   priv->calib.h3 = buf[2];
   priv->calib.h4 = (int16_t)((buf[3] << 4) | (buf[4] & 0x0F));
-  priv->calib.h5 = (int16_t)((buf[5] << 4) | (buf[4] >> 4));
+  priv->calib.h5 = (int16_t)((buf[5] << 4) | ((buf[4] >> 4) & 0x0F));
   priv->calib.h6 = (int8_t)buf[6];
 
 #if 0
@@ -1017,9 +1017,7 @@ static int bmp280_thread(int argc, FAR char **argv)
   struct sensor_baro baro;
   struct sensor_humi humi;
   uint8_t buf[8];
-  uint32_t press;
-  int32_t temp;
-  uint16_t hum;
+  int32_t adc_pres, adc_temp, adc_humidity;
   uint64_t now;
 
   FAR struct bmp280_dev_s *priv
@@ -1039,6 +1037,8 @@ static int bmp280_thread(int argc, FAR char **argv)
       }
     }
 
+    bmp280_putreg8(priv, BMP280_CTRL_MEAS, BMP280_FORCED_MODE | BMP280_OS_ULTRA_HIGH_RES);
+    bmp280_waitready(priv);
     now = sensor_get_timestamp();
 
     /* Read pressure & data */
@@ -1047,15 +1047,16 @@ static int bmp280_thread(int argc, FAR char **argv)
     baro.timestamp = now;
     humi.timestamp = now;
 
-    press = (uint32_t)COMBINE(buf);
-    temp = COMBINE(&buf[3]);
-    hum = (uint16_t)((buf[6] << 8) | buf[7]);
+    adc_pres = (buf[0] << 12) | (buf[1] << 4) | (buf[2] >> 4);
+    adc_temp = (buf[3] << 12) | (buf[4] << 4) | (buf[5] >> 4);
 
-    baro.pressure = bmp280_compensate_press_f(priv, press) / 100.0f;
-    baro.temperature = bmp280_compensate_temp_f(priv, temp);
+    baro.temperature = bmp280_compensate_temp_f(priv, adc_temp);
+    baro.pressure = bmp280_compensate_press_f(priv, adc_pres) / 100.0f;
     baro_lower->push_event(baro_lower->priv, &baro, sizeof(baro));
 
-    humi.humidity = bmp280_compensate_hum_f(priv, hum);
+    adc_humidity = (buf[6] << 8) | buf[7];
+
+    humi.humidity = bmp280_compensate_hum_f(priv, adc_humidity);
     humi_lower->push_event(humi_lower->priv, &humi, sizeof(humi));
 
     nxsig_usleep(priv->interval);
