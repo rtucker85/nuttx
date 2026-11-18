@@ -104,6 +104,17 @@ config ARCH_CHIP_AM335X
 	---help---
 		TI AM335X family: AM3356, AM3357, AM3358, AM3359 (ARM Cortex-A8)
 
+config ARCH_CHIP_AM263X
+	bool "AM263x"
+	select ARCH_CORTEXR5
+	select ARCH_HAVE_FPU
+	select ARCH_HAVE_DPFPU
+	select ARCH_HAVE_LOWVECTORS
+	select ARCH_HAVE_IRQTRIGGER
+	---help---
+		TI AM263x family (AM2631, AM2632, AM2634): up to four Cortex-R5F
+		cores with a double-precision FPU, little-endian.
+
 config ARCH_CHIP_AM67
 	bool "AM67"
 	select ARCH_CORTEXR5
@@ -1424,6 +1435,7 @@ config ARCH_CHIP
 	string
 	default "a1x"		if ARCH_CHIP_A1X
 	default "am335x"	if ARCH_CHIP_AM335X
+	default "am263x"	if ARCH_CHIP_AM263X
 	default "am67"		if ARCH_CHIP_AM67
 	default "fvp-v8r-aarch32"	if ARCH_CHIP_FVP_ARMV8R_AARCH32
 	default "c5471"		if ARCH_CHIP_C5471
@@ -1872,6 +1884,9 @@ source "arch/arm/src/a1x/Kconfig"
 endif
 if ARCH_CHIP_AM335X
 source "arch/arm/src/am335x/Kconfig"
+endif
+if ARCH_CHIP_AM263X
+source "arch/arm/src/am263x/Kconfig"
 endif
 if ARCH_CHIP_AM67
 source "arch/arm/src/am67/Kconfig"
