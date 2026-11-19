@@ -52,4 +52,52 @@ config AM263X_PRU
 		stop it, and read and write its DMEM.  See
 		arch/arm/include/am263x/pru.h.
 
+config AM263X_MCSPI
+	bool
+	default n
+
+config AM263X_MCSPI0
+	bool "MCSPI0"
+	default n
+	depends on SPI
+	select AM263X_MCSPI
+
+config AM263X_MCSPI1
+	bool "MCSPI1"
+	default n
+	depends on SPI
+	select AM263X_MCSPI
+
+config AM263X_MCSPI2
+	bool "MCSPI2"
+	default n
+	depends on SPI
+	select AM263X_MCSPI
+
+config AM263X_MCSPI3
+	bool "MCSPI3"
+	default n
+	depends on SPI
+	select AM263X_MCSPI
+
+config AM263X_MCSPI4
+	bool "MCSPI4"
+	default n
+	depends on SPI
+	select AM263X_MCSPI
+
 endmenu # AM263x Peripheral Selection
+
+menu "AM263x MCSPI Configuration"
+	depends on AM263X_MCSPI
+
+config AM263X_MCSPI_LOOPBACK
+	bool "Loop D0 back to the receiver"
+	default n
+	---help---
+		Receive on D0, the pin the controller transmits on, instead of
+		D1, so every word sent comes back through the D0 pad.  For
+		testing a bus without wiring or a device.  The D0 pad must have
+		its input enabled.
+
+endmenu # AM263x MCSPI Configuration
