@@ -30,6 +30,10 @@ if(CONFIG_BOARDCTL)
   list(APPEND SRCS am263x_appinit.c)
 endif()
 
+if(CONFIG_BOARDCTL_RESET)
+  list(APPEND SRCS am263x_reset.c)
+endif()
+
 target_sources(board PRIVATE ${SRCS})
 
 set_property(GLOBAL PROPERTY LD_SCRIPT "${NUTTX_BOARD_DIR}/scripts/ocram.ld")
