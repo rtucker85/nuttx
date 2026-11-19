@@ -28,6 +28,7 @@ set(SRCS
     am263x_mpuinit.c
     am263x_pinmux.c
     am263x_serial.c
+    am263x_systemreset.c
     am263x_timer.c)
 
 if(CONFIG_AM263X_PRU)
