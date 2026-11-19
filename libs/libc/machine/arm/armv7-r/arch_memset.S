@@ -149,14 +149,12 @@ ARCH_LIBCFUN(memset):
 	strbcs      r1, [r3], #1
 	strbcs      r1, [r3], #1
 	bx          lr
-	.size ARCH_LIBCFUN(memset), . - ARCH_LIBCFUN(memset)
 
 #else
 
 	/* compute the offset to align the destination
 	 * offset = (4-(src&3))&3 = -src & 3
 	 */
-	.save       {r0, r4-r7, lr}
 	stmfd       sp!, {r0, r4-r7, lr}
 	rsb         r3, r0, #0
 	ands        r3, r3, #3
@@ -219,5 +217,7 @@ ARCH_LIBCFUN(memset):
 	ldmfd       sp!, {r0, r4-r7, pc}
 
 #endif
+
+	.size ARCH_LIBCFUN(memset), . - ARCH_LIBCFUN(memset)
 
 #endif
