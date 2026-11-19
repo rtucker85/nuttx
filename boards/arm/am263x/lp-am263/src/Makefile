@@ -32,4 +32,8 @@ ifeq ($(CONFIG_BOARDCTL),y)
 CSRCS += am263x_appinit.c
 endif
 
+ifeq ($(CONFIG_BOARDCTL_RESET),y)
+CSRCS += am263x_reset.c
+endif
+
 include $(TOPDIR)/boards/Board.mk
