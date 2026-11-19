@@ -22,4 +22,8 @@
 
 set(SRCS mspm0_start.c mspm0_irq.c)
 
+if(NOT CONFIG_SCHED_TICKLESS)
+  list(APPEND SRCS mspm0_timerisr.c)
+endif()
+
 target_sources(arch PRIVATE ${SRCS})
