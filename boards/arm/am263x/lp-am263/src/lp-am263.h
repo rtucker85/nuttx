@@ -43,4 +43,16 @@
 
 int am263x_bringup(void);
 
+/****************************************************************************
+ * Name: am263x_spi_initialize
+ *
+ * Description:
+ *   Set up the SPI buses and, with CONFIG_SPI_DRIVER, /dev/spiN.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_AM263X_MCSPI
+int am263x_spi_initialize(void);
+#endif
+
 #endif /* __BOARDS_ARM_AM263X_LP_AM263_SRC_LP_AM263_H */
