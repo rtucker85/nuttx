@@ -35,6 +35,10 @@ if(CONFIG_AM263X_PRU)
   list(APPEND SRCS am263x_pru.c)
 endif()
 
+if(CONFIG_AM263X_I2C)
+  list(APPEND SRCS am263x_i2c.c)
+endif()
+
 if(CONFIG_AM263X_MCSPI)
   list(APPEND SRCS am263x_spi.c)
 endif()
