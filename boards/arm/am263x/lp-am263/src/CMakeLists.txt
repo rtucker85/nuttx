@@ -22,6 +22,10 @@
 
 set(SRCS am263x_boardinit.c am263x_bringup.c)
 
+if(CONFIG_AM263X_MCSPI)
+  list(APPEND SRCS am263x_spi.c)
+endif()
+
 if(CONFIG_BOARDCTL)
   list(APPEND SRCS am263x_appinit.c)
 endif()
