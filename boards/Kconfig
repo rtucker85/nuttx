@@ -1699,6 +1699,13 @@ config ARCH_BOARD_NUTINY_NUC120
 		Nuvoton NUC120 chip, specifically the NUC120LE3AN.  See http://www.nuvoton.com/
 		for further information.
 
+config ARCH_BOARD_LP_MSPM0G3519
+	bool "TI LP-MSPM0G3519 LaunchPad"
+	depends on ARCH_CHIP_MSPM0G3519
+	---help---
+		TI LP-MSPM0G3519 LaunchPad with an MSPM0G3519 (Cortex-M0+) and an
+		on-board XDS110 debug probe.
+
 config ARCH_BOARD_OLIMEX_EFM32G880F128_STK
 	bool "Olimex EFM32G880F128 STK"
 	depends on ARCH_CHIP_EFM32G880F128
@@ -4401,6 +4408,7 @@ config ARCH_BOARD
 	default "nucleo-wb55rg"                if ARCH_BOARD_NUCLEO_WB55RG
 	default "nucleo-wl55jc"                if ARCH_BOARD_NUCLEO_WL55JC
 	default "nutiny-nuc120"                if ARCH_BOARD_NUTINY_NUC120
+	default "lp-mspm0g3519"                if ARCH_BOARD_LP_MSPM0G3519
 	default "olimex-efm32g880f128-stk"     if ARCH_BOARD_OLIMEX_EFM32G880F128_STK
 	default "olimex-lpc1766stk"            if ARCH_BOARD_LPC1766STK
 	default "olimex-lpc2378"               if ARCH_BOARD_OLIMEXLPC2378
@@ -4980,6 +4988,9 @@ source "boards/arm/nrf52/nrf9160-dk-nrf52/Kconfig"
 endif
 if ARCH_BOARD_NUTINY_NUC120
 source "boards/arm/nuc1xx/nutiny-nuc120/Kconfig"
+endif
+if ARCH_BOARD_LP_MSPM0G3519
+source "boards/arm/mspm0/lp-mspm0g3519/Kconfig"
 endif
 if ARCH_BOARD_RASPBERRYPI_PICO
 source "boards/arm/rp2040/raspberrypi-pico/Kconfig"
