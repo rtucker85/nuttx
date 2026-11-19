@@ -20,7 +20,7 @@
 #
 # ##############################################################################
 
-set(SRCS mspm0_start.c mspm0_irq.c mspm0_lowputc.c)
+set(SRCS mspm0_start.c mspm0_irq.c mspm0_lowputc.c mspm0_serial.c)
 
 if(NOT CONFIG_SCHED_TICKLESS)
   list(APPEND SRCS mspm0_timerisr.c)
