@@ -1125,6 +1125,66 @@ config SENSORS_LSM6DSO32_GYRO_ORB_BUFSIZE
 
 endif # SENSORS_LSM6DSO32
 
+config SENSORS_LSM6DSV
+	bool "STMicroelectronics LSM6DSV IMU support"
+	default n
+	select SPI
+	---help---
+		Enable uORB driver support for the STMicroelectronics LSM6DSV
+		6-axis IMU on SPI, as the sensor_accel and sensor_gyro topics.
+		Samples are batched in the device FIFO and drained by a kernel
+		thread.
+
+if SENSORS_LSM6DSV
+
+config SENSORS_LSM6DSV_SPI_FREQUENCY
+	int "SPI frequency"
+	default 8000000
+	range 1 10000000
+
+config SENSORS_LSM6DSV_INTERVAL
+	int "Default sample period (us)"
+	default 8333
+	---help---
+		Sample period both sensors start with, until set_interval()
+		changes it.  Rounded to the nearest rate the device has at or
+		above it, 7.5 Hz to 7.68 kHz.  8333 is 120 Hz.
+
+config SENSORS_LSM6DSV_POLL_INTERVAL
+	int "FIFO poll period (us)"
+	default 10000
+	---help---
+		How often the thread drains the FIFO.  The FIFO holds 512
+		samples, so this must stay below 512 sample periods of the two
+		sensors together.
+
+config SENSORS_LSM6DSV_ACCEL_FS
+	int "Default accelerometer full scale (g)"
+	default 16
+	---help---
+		2, 4, 8 or 16; other values round up.
+
+config SENSORS_LSM6DSV_GYRO_FS
+	int "Default gyroscope full scale (dps)"
+	default 2000
+	---help---
+		125, 250, 500, 1000, 2000 or 4000; other values round up.
+
+config SENSORS_LSM6DSV_BUFSIZE
+	int "uORB buffer size per topic"
+	default 16
+	range 1 512
+
+config SENSORS_LSM6DSV_THREAD_PRIORITY
+	int "Thread priority"
+	default 110
+
+config SENSORS_LSM6DSV_THREAD_STACKSIZE
+	int "Thread stack size"
+	default 2048
+
+endif # SENSORS_LSM6DSV
+
 config SENSORS_LSM6DS3TRC
 	bool "STM LSM6DS3TR-C support"
 	default n
