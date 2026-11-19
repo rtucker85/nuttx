@@ -31,6 +31,7 @@
 #include <nuttx/init.h>
 
 #include "arm_internal.h"
+#include "mspm0_lowputc.h"
 #include "mspm0_start.h"
 
 /****************************************************************************
@@ -73,6 +74,12 @@ void __start(void)
 {
   const uint32_t *src;
   uint32_t *dest;
+
+  /* Set up the console UART so that arm_lowputc() works from here on.
+   * This must not use .data or .bss.
+   */
+
+  mspm0_lowsetup();
 
   /* Clear .bss.  This is done inline (rather than with memset) so that
    * nothing depends on global variables before they are set up.
