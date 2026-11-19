@@ -41,3 +41,17 @@ endchoice # TI MSPM0 Chip Selection
 config ARCH_CHIP_MSPM0G351X
 	bool
 	default n
+
+menu "MSPM0 Peripheral Selection"
+
+config MSPM0_UART
+	bool
+	default n
+
+config MSPM0_UART0
+	bool "UART0"
+	default n
+	select MSPM0_UART
+	select UART0_SERIALDRIVER
+
+endmenu # MSPM0 Peripheral Selection
