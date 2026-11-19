@@ -32,6 +32,10 @@
 
 #include "lp-am263.h"
 
+#ifdef CONFIG_AM263X_PRU
+#  include "am263x_pru.h"
+#endif
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -49,6 +53,20 @@ int am263x_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: Failed to mount procfs at /proc: %d\n", ret);
+    }
+#endif
+
+#ifdef CONFIG_AM263X_PRU
+  ret = am263x_pru_register("/dev/pru0", 0);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to register /dev/pru0: %d\n", ret);
+    }
+
+  ret = am263x_pru_register("/dev/pru1", 1);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to register /dev/pru1: %d\n", ret);
     }
 #endif
 
