@@ -26,4 +26,15 @@
 
 if ARCH_BOARD_LP_AM263
 
+config LP_AM263_BOOSTERPACK1_SPI
+	bool "MCSPI0 on BoosterPack site 1"
+	default n
+	depends on AM263X_MCSPI0
+	---help---
+		SPI0_D0/D1 always reach BoosterPack site 1 (J2.15, J2.14), but
+		SPI0_CLK and SPI0_CS0 reach J1.7 and J2.18 only through the U51
+		mux.  This drives GPIO58 high, turning the BoosterPack muxes on
+		and the PRU0 second-PHY mux (U49) off, and GPIO63 low, so U51
+		passes SPI0 rather than the PRU0 GPIOs.
+
 endif # ARCH_BOARD_LP_AM263

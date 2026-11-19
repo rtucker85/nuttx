@@ -70,6 +70,14 @@ int am263x_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_AM263X_MCSPI
+  ret = am263x_spi_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to initialize SPI: %d\n", ret);
+    }
+#endif
+
   UNUSED(ret);
   return OK;
 }
