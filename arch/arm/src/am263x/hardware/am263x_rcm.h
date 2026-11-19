@@ -70,6 +70,21 @@
 #define AM263X_MSS_RCM_LOCK0_KICK1 \
   (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_LOCK0_KICK1_OFFSET)
 
+/* TOP_RCM: SoC warm reset.  Writing 0 to WARM_RESET_REQ.SW_RST (bits 2:0)
+ * resets the SoC, which then boots again in the latched boot mode.
+ */
+
+#define AM263X_TOP_RCM_WARM_RESET_REQ_OFFSET 0x0008
+#define AM263X_TOP_RCM_LOCK0_KICK0_OFFSET    0x1008
+#define AM263X_TOP_RCM_LOCK0_KICK1_OFFSET    0x100c
+
+#define AM263X_TOP_RCM_WARM_RESET_REQ \
+  (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_WARM_RESET_REQ_OFFSET)
+#define AM263X_TOP_RCM_LOCK0_KICK0 \
+  (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_LOCK0_KICK0_OFFSET)
+#define AM263X_TOP_RCM_LOCK0_KICK1 \
+  (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_LOCK0_KICK1_OFFSET)
+
 /* Peripheral clock source selectors.  The 3-bit selector is repeated in
  * three nibbles; the value differs per peripheral group.
  */
