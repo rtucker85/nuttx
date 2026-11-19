@@ -44,6 +44,10 @@
 
 /* Pad configuration register offsets (one 32-bit register per pad) */
 
+#define AM263X_PAD_SPI0_CS0         0x002c
+#define AM263X_PAD_SPI0_CLK         0x0030
+#define AM263X_PAD_SPI0_D0          0x0034
+#define AM263X_PAD_SPI0_D1          0x0038
 #define AM263X_PAD_UART0_RXD        0x006c
 #define AM263X_PAD_UART0_TXD        0x0070
 

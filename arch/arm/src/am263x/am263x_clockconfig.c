@@ -62,6 +62,20 @@ static void am263x_set_clock(uintptr_t srcsel, uintptr_t divval,
 }
 
 /****************************************************************************
+ * Name: am263x_mcspi_clock
+ ****************************************************************************/
+
+#ifdef CONFIG_AM263X_MCSPI
+static void am263x_mcspi_clock(int n)
+{
+  am263x_set_clock(AM263X_MSS_RCM_MCSPI_CLK_SRC_SEL(n),
+                   AM263X_MSS_RCM_MCSPI_CLK_DIV_VAL(n),
+                   AM263X_MSS_RCM_MCSPI_CLK_GATE(n),
+                   RCM_MCSPI_CLKSRC_PER_HSDIV0_CLKOUT1, RCM_CLK_DIV(4));
+}
+#endif
+
+/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -87,4 +101,22 @@ void am263x_clockconfig(void)
                    AM263X_MSS_RCM_RTI0_CLK_DIV_VAL,
                    AM263X_MSS_RCM_RTI0_CLK_GATE,
                    RCM_RTI_CLKSRC_XTAL, RCM_CLK_DIV(1));
+
+  /* MCSPIn: PER_HSDIV0_CLKOUT1 (192 MHz) / 4 = 48 MHz */
+
+#ifdef CONFIG_AM263X_MCSPI0
+  am263x_mcspi_clock(0);
+#endif
+#ifdef CONFIG_AM263X_MCSPI1
+  am263x_mcspi_clock(1);
+#endif
+#ifdef CONFIG_AM263X_MCSPI2
+  am263x_mcspi_clock(2);
+#endif
+#ifdef CONFIG_AM263X_MCSPI3
+  am263x_mcspi_clock(3);
+#endif
+#ifdef CONFIG_AM263X_MCSPI4
+  am263x_mcspi_clock(4);
+#endif
 }
