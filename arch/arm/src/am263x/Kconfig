@@ -40,3 +40,16 @@ config ARCH_CHIP_AM2634
 	bool "AM2634 (4x Cortex-R5F)"
 
 endchoice # AM263x chip
+
+menu "AM263x Peripheral Selection"
+
+config AM263X_PRU
+	bool "ICSSM PRU cores"
+	default n
+	---help---
+		Character drivers for the two PRU cores of ICSSM0 (/dev/pru0,
+		/dev/pru1): load firmware into a core's IRAM and DMEM, start and
+		stop it, and read and write its DMEM.  See
+		arch/arm/include/am263x/pru.h.
+
+endmenu # AM263x Peripheral Selection

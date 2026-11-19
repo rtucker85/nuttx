@@ -117,6 +117,7 @@
 #define _PULSECOUNTBASE (0x4900) /* Pulse count driver ioctl commands */
 #define _NPZEROIOCBASE  (0x4a00) /* nPZero power-saving IC ioctl commands */
 #define _OCUIOCBASE     (0x4b00) /* OCU (Output Compare Unit) ioctl commands */
+#define _PRUIOCBASE     (0x4c00) /* TI PRU (ICSS) core ioctl commands */
 #define _RPTUNBASE      (0x5000) /* Remote processor tunneling ioctl commands */
 #define _VIRTIOBASE     (0x5100) /* VirtIO ioctl commands */
 #define _WLIOCBASE      (0x8b00) /* Wireless modules ioctl network commands */
@@ -876,6 +877,11 @@
 
 #define _OCUIOCVALID(c)       (_IOC_TYPE(c)==_OCUIOCBASE)
 #define _OCUIOC(nr)           _IOC(_OCUIOCBASE,nr)
+
+/* TI PRU (ICSS) core driver ioctl definitions ******************************/
+
+#define _PRUIOCVALID(c)       (_IOC_TYPE(c)==_PRUIOCBASE)
+#define _PRUIOC(nr)           _IOC(_PRUIOCBASE,nr)
 
 /* Rptun drivers ************************************************************/
 

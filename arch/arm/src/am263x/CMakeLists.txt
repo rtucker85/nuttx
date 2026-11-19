@@ -29,4 +29,8 @@ set(SRCS
     am263x_serial.c
     am263x_timer.c)
 
+if(CONFIG_AM263X_PRU)
+  list(APPEND SRCS am263x_pru.c)
+endif()
+
 target_sources(arch PRIVATE ${SRCS})
