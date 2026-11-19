@@ -25,7 +25,7 @@ include armv7-r/Make.defs
 CHIP_CSRCS  = am263x_boot.c am263x_clockconfig.c am263x_gpio.c
 CHIP_CSRCS += am263x_irq.c
 CHIP_CSRCS += am263x_mpuinit.c am263x_pinmux.c am263x_serial.c
-CHIP_CSRCS += am263x_timer.c
+CHIP_CSRCS += am263x_systemreset.c am263x_timer.c
 
 ifeq ($(CONFIG_AM263X_PRU),y)
 CHIP_CSRCS += am263x_pru.c
