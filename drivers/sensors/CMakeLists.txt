@@ -444,6 +444,10 @@ if(CONFIG_SENSORS)
       list(APPEND SRCS lsm330_spi.c)
     endif()
 
+    if(CONFIG_SENSORS_LSM6DSV)
+      list(APPEND SRCS lsm6dsv_uorb.c)
+    endif()
+
     if(CONFIG_SENSORS_L3GD20)
       list(APPEND SRCS l3gd20_uorb.c)
     endif()
