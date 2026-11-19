@@ -39,6 +39,7 @@
 
 /* Peripherals */
 
+#define AM263X_ICSSM0_BASE          0x48000000  /* PRU-ICSS, see am263x_icssm.h */
 #define AM263X_MSS_CTRL_BASE        0x50d00000
 #define AM263X_TOP_CTRL_BASE        0x50d80000
 #define AM263X_VIM_BASE             0x50f00000  /* each core sees its own */
