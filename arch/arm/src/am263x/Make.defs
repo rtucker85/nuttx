@@ -31,6 +31,10 @@ ifeq ($(CONFIG_AM263X_PRU),y)
 CHIP_CSRCS += am263x_pru.c
 endif
 
+ifeq ($(CONFIG_AM263X_I2C),y)
+CHIP_CSRCS += am263x_i2c.c
+endif
+
 ifeq ($(CONFIG_AM263X_MCSPI),y)
 CHIP_CSRCS += am263x_spi.c
 endif

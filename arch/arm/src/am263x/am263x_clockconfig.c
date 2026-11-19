@@ -102,6 +102,26 @@ void am263x_clockconfig(void)
                    AM263X_MSS_RCM_RTI0_CLK_GATE,
                    RCM_RTI_CLKSRC_XTAL, RCM_CLK_DIV(1));
 
+  /* I2C0-3 share one clock: PER_HSDIV0_CLKOUT1 (192 MHz) / 2 = 96 MHz.
+   * Each module has its own gate.
+   */
+
+#ifdef CONFIG_AM263X_I2C
+  am263x_set_clock(AM263X_MSS_RCM_I2C_CLK_SRC_SEL,
+                   AM263X_MSS_RCM_I2C_CLK_DIV_VAL,
+                   AM263X_MSS_RCM_I2C_CLK_GATE(0),
+                   RCM_I2C_CLKSRC_PER_HSDIV0_CLKOUT1, RCM_CLK_DIV(2));
+#endif
+#ifdef CONFIG_AM263X_I2C1
+  putreg32(RCM_CLK_UNGATED, AM263X_MSS_RCM_I2C_CLK_GATE(1));
+#endif
+#ifdef CONFIG_AM263X_I2C2
+  putreg32(RCM_CLK_UNGATED, AM263X_MSS_RCM_I2C_CLK_GATE(2));
+#endif
+#ifdef CONFIG_AM263X_I2C3
+  putreg32(RCM_CLK_UNGATED, AM263X_MSS_RCM_I2C_CLK_GATE(3));
+#endif
+
   /* MCSPIn: PER_HSDIV0_CLKOUT1 (192 MHz) / 4 = 48 MHz */
 
 #ifdef CONFIG_AM263X_MCSPI0
