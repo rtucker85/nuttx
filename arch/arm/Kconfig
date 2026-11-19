@@ -341,6 +341,12 @@ config ARCH_CHIP_MOXART
 	---help---
 		MoxART family
 
+config ARCH_CHIP_MSPM0
+	bool "TI MSPM0"
+	select ARCH_CORTEXM0
+	---help---
+		TI MSPM0 architectures (ARM Cortex-M0+).
+
 config ARCH_CHIP_N32H7
 	bool "N32 H7"
 	select ARCH_CORTEXM7
@@ -1440,6 +1446,7 @@ config ARCH_CHIP
 	default "lpc54xx"	if ARCH_CHIP_LPC54XX
 	default "max326xx"	if ARCH_CHIP_MAX326XX
 	default "moxart"	if ARCH_CHIP_MOXART
+	default "mspm0"		if ARCH_CHIP_MSPM0
 	default "n32h7"		if ARCH_CHIP_N32H7
 	default "nrf52"		if ARCH_CHIP_NRF52
 	default "nrf53"		if ARCH_CHIP_NRF53
@@ -1942,6 +1949,9 @@ source "arch/arm/src/max326xx/Kconfig"
 endif
 if ARCH_CHIP_MOXART
 source "arch/arm/src/moxart/Kconfig"
+endif
+if ARCH_CHIP_MSPM0
+source "arch/arm/src/mspm0/Kconfig"
 endif
 if ARCH_CHIP_N32H7
 source "arch/arm/src/n32h7/Kconfig"
