@@ -368,6 +368,10 @@ if(CONFIG_SENSORS)
       list(APPEND SRCS amg88xx.c)
     endif()
 
+    if(CONFIG_SENSORS_TMP117)
+      list(APPEND SRCS tmp117_uorb.c)
+    endif()
+
     if(CONFIG_SENSORS_TMP112)
       if(CONFIG_SENSORS_TMP112_UORB)
         list(APPEND SRCS tmp112_uorb.c)

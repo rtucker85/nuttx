@@ -1,0 +1,26 @@
+======
+TMP117
+======
+
+The TI TMP117 is a high-accuracy digital temperature sensor on I2C.  This
+driver uses the :doc:`uorb </os/drivers/special/sensors/sensors_uorb>`
+interface and publishes the ``sensor_temp<n>`` topic in degrees Celsius.
+
+The part converts continuously with 8-sample averaging.  ``set_interval()``
+picks the conversion cycle, from 125 ms (the shortest with averaging) to
+16 s, and a low-priority work item reads the latest result at that
+interval.  The alert pin, the limits, the offset register and the EEPROM
+are not used.
+
+.. code-block:: c
+
+   #include <nuttx/sensors/tmp117.h>
+
+   ret = tmp117_register_uorb(0, i2c, TMP117_ADDR_GND);
+
+Registration reads ``DEVICE_ID`` (0x117) and returns ``-ENODEV`` if it does
+not match.  The address follows the ADD0 pin: ``TMP117_ADDR_GND`` (0x48),
+``_VPLUS``, ``_SDA`` or ``_SCL``.
+
+* ``CONFIG_SENSORS_TMP117``: the driver (needs ``CONFIG_SCHED_LPWORK``).
+* ``CONFIG_TMP117_I2C_FREQUENCY``: up to 400 kHz.
