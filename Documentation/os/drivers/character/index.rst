@@ -78,6 +78,7 @@ Character device drivers have these properties:
   rc.rst
   rf.rst
   serial.rst
+  slg46826.rst
   timers/index.rst
   touchscreen.rst
   wireless/index.rst

@@ -1,0 +1,59 @@
+=========================
+Renesas GreenPAK SLG46826
+=========================
+
+The SLG46826 is a GreenPAK programmable mixed-signal device with an I2C
+interface.  The driver registers it as a character device and can bootstrap
+a board's design into it.
+
+The device answers at several addresses: the register block at the base
+address (``0x08`` with the default control code), the NVM at base + 2 and
+the emulated EEPROM at base + 3.  The NVM is 16 pages of 16 bytes; page 15 is
+the service page and is never erased or written.
+
+Character device
+================
+
+``read()``, ``write()`` and ``lseek()`` access the 256-byte register block,
+so ``xd`` and ``hexdump`` work on the device node.  ioctls:
+
+* ``SLG46826IOC_RAMLOAD``: write registers 0x00-0xc7 of a design, the logic
+  configuration, into the live registers.  Lost at the next reset.  The
+  registers above (soft reset, I2C control code, silicon ID, protection,
+  erase, lock) are not touched.
+* ``SLG46826IOC_NVMREAD``: read the NVM block.
+* ``SLG46826IOC_NVMPROGRAM``: erase and write NVM pages 0-14, reset, and
+  verify.  The erase command is always NACKed by the device (a known
+  erratum), so each page erase is followed by a fixed delay.
+* ``SLG46826IOC_RESET``: soft reset, reloading the registers from NVM.
+
+The image arguments are ``SLG46826_IMAGE_SIZE`` (256) bytes, laid out as the
+device's map.
+
+Bootstrap
+=========
+
+.. code-block:: c
+
+   #include <nuttx/misc/slg46826.h>
+
+   static const struct slg46826_config_s config =
+   {
+     .addr  = SLG46826_ADDR_DEFAULT,
+     .boot  = SLG46826_BOOT_NVM_IF_BLANK,
+     .image = board_design,           /* 256 bytes */
+   };
+
+   ret = slg46826_register("/dev/slg0", i2c, &config);
+
+``boot`` selects what happens at registration: nothing, a RAM load, or NVM
+programming.  NVM programming happens only if the configuration registers
+read back all zero, as on a blank part; a part holding another design is
+reported and left alone, and reprogramming it takes
+``SLG46826IOC_NVMPROGRAM``.
+
+Configuration
+=============
+
+* ``CONFIG_SLG46826``: the driver.
+* ``CONFIG_SLG46826_I2C_FREQUENCY``: up to 400 kHz.

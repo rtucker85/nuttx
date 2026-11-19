@@ -82,4 +82,8 @@ if(CONFIG_GOLDFISH_PIPE)
   list(APPEND SRCS goldfish_pipe.c)
 endif()
 
+if(CONFIG_SLG46826)
+  list(APPEND SRCS slg46826.c)
+endif()
+
 target_sources(drivers PRIVATE ${SRCS})
