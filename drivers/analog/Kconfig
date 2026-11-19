@@ -295,6 +295,26 @@ config ADS7046_FREQUENCY
 
 endif # ADC_ADS7046
 
+config ADC_ADS7038
+	bool "TI ADS7038 support"
+	default n
+	depends on SPI_EXCHANGE
+	---help---
+		Enable driver support for the Texas Instruments ADS7038 and
+		ADS7038-Q1 8-channel 12-bit SPI ADC, as an ADC lower half for
+		adc_register().
+
+if ADC_ADS7038
+
+config ADS7038_FREQUENCY
+	int "TI ADS7038 SPI frequency"
+	default 10000000
+	range 1 60000000
+	---help---
+		ADS7038 SPI frequency.  Maximum is 60 MHz.
+
+endif # ADC_ADS7038
+
 config ADC_ADS1115
 	bool "ADS1115 support"
 	default n
