@@ -86,4 +86,8 @@ if(CONFIG_QEMU_FWCFG)
   list(APPEND SRCS qemu_fwcfg.c)
 endif()
 
+if(CONFIG_SLG46826)
+  list(APPEND SRCS slg46826.c)
+endif()
+
 target_sources(drivers PRIVATE ${SRCS})

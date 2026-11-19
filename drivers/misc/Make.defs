@@ -83,6 +83,10 @@ ifeq ($(CONFIG_QEMU_FWCFG),y)
   CSRCS += qemu_fwcfg.c
 endif
 
+ifeq ($(CONFIG_SLG46826),y)
+  CSRCS += slg46826.c
+endif
+
 # Include build support
 
 DEPPATH += --dep-path misc
