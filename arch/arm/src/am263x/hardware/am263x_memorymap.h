@@ -48,6 +48,7 @@
 #define AM263X_RTI1_BASE            0x52181000
 #define AM263X_RTI2_BASE            0x52182000
 #define AM263X_RTI3_BASE            0x52183000
+#define AM263X_I2C0_BASE            0x52500000  /* I2C0-3, 4 KB apart */
 #define AM263X_MCSPI0_BASE          0x52200000  /* MCSPI0-4, 4 KB apart */
 #define AM263X_UART0_BASE           0x52300000
 #define AM263X_UART1_BASE           0x52301000

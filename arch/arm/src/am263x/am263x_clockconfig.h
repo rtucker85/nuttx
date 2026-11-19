@@ -40,6 +40,7 @@
 #define AM263X_XTAL_FREQUENCY       25000000  /* LP-AM263 crystal */
 #define AM263X_UART0_FREQUENCY      48000000  /* PER_HSDIV0_CLKOUT1 / 4 */
 #define AM263X_RTI0_FREQUENCY       AM263X_XTAL_FREQUENCY
+#define AM263X_I2C_FREQUENCY        96000000  /* PER_HSDIV0_CLKOUT1 / 2 */
 #define AM263X_MCSPI_FREQUENCY      48000000  /* PER_HSDIV0_CLKOUT1 / 4 */
 
 /****************************************************************************

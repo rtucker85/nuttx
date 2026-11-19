@@ -86,7 +86,55 @@ config AM263X_MCSPI4
 	depends on SPI
 	select AM263X_MCSPI
 
+config AM263X_I2C
+	bool
+	default n
+	select I2C
+	select ARCH_HAVE_I2CRESET
+
+config AM263X_I2C0
+	bool "I2C0"
+	default n
+	select AM263X_I2C
+
+config AM263X_I2C1
+	bool "I2C1"
+	default n
+	select AM263X_I2C
+
+config AM263X_I2C2
+	bool "I2C2"
+	default n
+	select AM263X_I2C
+
+config AM263X_I2C3
+	bool "I2C3"
+	default n
+	select AM263X_I2C
+
 endmenu # AM263x Peripheral Selection
+
+menu "AM263x I2C Configuration"
+	depends on AM263X_I2C
+
+config AM263X_I2C_TIMEOUT_MS
+	int "I2C transfer timeout slack (ms)"
+	default 20
+	---help---
+		Added to four times the nominal duration of every transfer
+		segment before it is abandoned and the module reset.  Also
+		bounds how long a transfer waits for the bus to go idle.
+
+config AM263X_I2C_LOOPBACK
+	bool "I2C digital loopback (self-test)"
+	default n
+	---help---
+		Provide am263x_i2c_loopback(): the module addresses itself
+		(I2CMDR.DLB), so master-transmit transfers complete and the
+		bytes come back through the receive register with nothing on
+		the bus.  For a board self-test.
+
+endmenu # AM263x I2C Configuration
 
 menu "AM263x MCSPI Configuration"
 	depends on AM263X_MCSPI
