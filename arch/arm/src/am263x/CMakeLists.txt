@@ -23,6 +23,7 @@
 set(SRCS
     am263x_boot.c
     am263x_clockconfig.c
+    am263x_gpio.c
     am263x_irq.c
     am263x_mpuinit.c
     am263x_pinmux.c
