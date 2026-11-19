@@ -118,6 +118,7 @@
 #define _NPZEROIOCBASE  (0x4a00) /* nPZero power-saving IC ioctl commands */
 #define _OCUIOCBASE     (0x4b00) /* OCU (Output Compare Unit) ioctl commands */
 #define _PRUIOCBASE     (0x4c00) /* TI PRU (ICSS) core ioctl commands */
+#define _SLGIOCBASE     (0x4d00) /* Renesas GreenPAK SLG46826 ioctl commands */
 #define _RPTUNBASE      (0x5000) /* Remote processor tunneling ioctl commands */
 #define _VIRTIOBASE     (0x5100) /* VirtIO ioctl commands */
 #define _WLIOCBASE      (0x8b00) /* Wireless modules ioctl network commands */
@@ -882,6 +883,11 @@
 
 #define _PRUIOCVALID(c)       (_IOC_TYPE(c)==_PRUIOCBASE)
 #define _PRUIOC(nr)           _IOC(_PRUIOCBASE,nr)
+
+/* Renesas GreenPAK SLG46826 driver ioctl definitions ***********************/
+
+#define _SLGIOCVALID(c)       (_IOC_TYPE(c)==_SLGIOCBASE)
+#define _SLGIOC(nr)           _IOC(_SLGIOCBASE,nr)
 
 /* Rptun drivers ************************************************************/
 

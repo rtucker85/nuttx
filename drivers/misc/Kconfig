@@ -108,6 +108,25 @@ config QEMU_FWCFG
 		the configdata ioctl interface (CFGDIOC_GETCONFIG,
 		CFGDIOC_FINDCONFIG, CFGDIOC_FIRSTCONFIG, CFGDIOC_NEXTCONFIG).
 
+config SLG46826
+	bool "Renesas GreenPAK SLG46826 support"
+	default n
+	select I2C
+	---help---
+		Character driver for the Renesas GreenPAK SLG46826 programmable
+		mixed-signal device on I2C: register access through read(),
+		write() and lseek(), RAM load and NVM programming of a design,
+		and a bootstrap of the board's design at registration.
+
+if SLG46826
+
+config SLG46826_I2C_FREQUENCY
+	int "SLG46826 I2C frequency"
+	default 400000
+	range 1 400000
+
+endif # SLG46826
+
 # ARCH needs to support memory access while CPU is running to be able to use
 # the LWL CONSOLE
 
