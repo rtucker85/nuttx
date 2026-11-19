@@ -28,6 +28,7 @@
 
 #include <nuttx/arch.h>
 
+#include "cp15_cacheops.h"
 #include "mpu.h"
 #include "sctlr.h"
 #include "chip.h"
@@ -109,10 +110,21 @@ void am263x_mpu_init(void)
 {
   uint32_t sctlr;
 
-  /* arm_head.S has already turned the MPU on, with whatever regions the
-   * SBL left behind still enabled.  Turn it off, clear every region, and
-   * stop PL1 falling through to the background map so that anything not
-   * listed above faults instead of silently using default attributes.
+  /* arm_head.S has already turned the MPU and the D-cache on, with
+   * whatever regions the SBL left behind still enabled, and has zeroed
+   * .bss and pushed stack frames through the (write-back) D-cache.  With
+   * the MPU off, data accesses use the default map, which is not
+   * cacheable, and the architecture does not promise they see dirty
+   * lines.  Write the D-cache back and turn it off first, with no stores
+   * in between.
+   */
+
+  up_flush_dcache_all();
+  cp15_disable_dcache();
+
+  /* Turn the MPU off, clear every region, and stop PL1 falling through
+   * to the background map so that anything not listed above faults
+   * instead of silently using default attributes.
    */
 
   mpu_control(false);
@@ -125,4 +137,12 @@ void am263x_mpu_init(void)
   mpu_initialize(g_am263x_mpu_regions,
                  sizeof(g_am263x_mpu_regions) /
                  sizeof(g_am263x_mpu_regions[0]));
+
+  /* Back on with the real attributes.  Lines left in the cache are stale
+   * after the uncached stores above; up_enable_dcache() invalidates first.
+   */
+
+#ifndef CONFIG_ARMV7R_DCACHE_DISABLE
+  up_enable_dcache();
+#endif
 }
