@@ -22,4 +22,4 @@
 
 include armv6-m/Make.defs
 
-CHIP_CSRCS  = mspm0_start.c
+CHIP_CSRCS  = mspm0_start.c mspm0_irq.c

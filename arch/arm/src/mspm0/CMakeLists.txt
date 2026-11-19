@@ -20,6 +20,6 @@
 #
 # ##############################################################################
 
-set(SRCS mspm0_start.c)
+set(SRCS mspm0_start.c mspm0_irq.c)
 
 target_sources(arch PRIVATE ${SRCS})
