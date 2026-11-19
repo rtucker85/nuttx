@@ -68,6 +68,14 @@ void arm_boot(void)
 
   am263x_clockconfig();
 
+#ifdef CONFIG_ARCH_PERF_EVENTS
+  /* Start the PMU cycle counter behind up_perf_gettime() and so
+   * perf_gettime().
+   */
+
+  up_perf_init((void *)BOARD_CPU_FREQUENCY);
+#endif
+
   /* Board pinmux, at least the console pins */
 
   am263x_board_initialize();
