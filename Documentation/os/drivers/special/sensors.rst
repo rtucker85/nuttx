@@ -42,6 +42,7 @@ tool for monitoring sensor activity at runtime.
     sensors/shtc3.rst
     sensors/tc74.rst
     sensors/tmp112.rst
+    sensors/adc_uorb.rst
     sensors/tmp117.rst
     sensors/lsm6dso32.rst
     sensors/lsm6ds3trc.rst
