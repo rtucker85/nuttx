@@ -26,6 +26,10 @@ if(CONFIG_AM263X_MCSPI)
   list(APPEND SRCS am263x_spi.c)
 endif()
 
+if(CONFIG_AM263X_MDIO)
+  list(APPEND SRCS am263x_ethernet.c)
+endif()
+
 if(CONFIG_BOARDCTL)
   list(APPEND SRCS am263x_appinit.c)
 endif()

@@ -28,6 +28,10 @@ ifeq ($(CONFIG_AM263X_MCSPI),y)
 CSRCS += am263x_spi.c
 endif
 
+ifeq ($(CONFIG_AM263X_MDIO),y)
+CSRCS += am263x_ethernet.c
+endif
+
 ifeq ($(CONFIG_BOARDCTL),y)
 CSRCS += am263x_appinit.c
 endif
