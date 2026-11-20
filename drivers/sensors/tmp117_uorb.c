@@ -289,10 +289,24 @@ static int tmp117_set_interval(FAR struct sensor_lowerhalf_s *lower,
                                FAR uint32_t *period_us)
 {
   FAR struct tmp117_dev_s *priv = (FAR struct tmp117_dev_s *)lower;
+  int ret;
 
   priv->interval = MAX(*period_us, g_tmp117_cycle[0]);
   *period_us     = priv->interval;
-  return tmp117_configure(priv);
+  ret            = tmp117_configure(priv);
+
+  /* Activation comes before the interval when a topic is opened, so a
+   * reading already queued at the old interval is queued again at the new
+   * one: otherwise a change from 16 s to 125 ms waits out the 16 s.
+   */
+
+  if (priv->enabled)
+    {
+      work_queue(LPWORK, &priv->work, tmp117_worker, priv,
+                 tmp117_delay(priv));
+    }
+
+  return ret;
 }
 
 /****************************************************************************
