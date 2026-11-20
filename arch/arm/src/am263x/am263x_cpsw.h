@@ -60,21 +60,37 @@ extern uint8_t g_am263x_cpsw_desc[AM263X_CPSW_DESC_REGION_SIZE];
  ****************************************************************************/
 
 /****************************************************************************
- * Name: am263x_cpsw_macaddr
+ * Name: am263x_efuse_macaddr
  *
  * Description:
- *   Board hook: the MAC address of the Ethernet port.  The default (weak)
- *   one returns a fixed locally administered address.
+ *   The MAC address TI programs into each device's eFuse (TOP_CTRL
+ *   MAC_ID0/1).  eth0 uses it unless the board sets another.
  *
  * Input Parameters:
  *   mac - Where to put the six bytes
  *
  * Returned Value:
- *   OK, or a negated errno to use the default.
+ *   OK, or -ENOENT if the eFuse holds no usable address.
  *
  ****************************************************************************/
 
-int am263x_cpsw_macaddr(uint8_t mac[6]);
+int am263x_efuse_macaddr(uint8_t mac[6]);
+
+/****************************************************************************
+ * Name: am263x_cpsw_setmacaddr
+ *
+ * Description:
+ *   Set eth0's MAC address, for a board whose address is not in the
+ *   eFuse (from an EEPROM, say).  Call before the interface comes up,
+ *   from board bring-up.
+ *
+ * Returned Value:
+ *   OK; -EINVAL for a multicast, all-zero or all-ones address; -EBUSY
+ *   if the interface is up.
+ *
+ ****************************************************************************/
+
+int am263x_cpsw_setmacaddr(FAR const uint8_t mac[6]);
 
 #endif /* CONFIG_AM263X_CPSW_ETH */
 #endif /* __ARCH_ARM_SRC_AM263X_AM263X_CPSW_H */

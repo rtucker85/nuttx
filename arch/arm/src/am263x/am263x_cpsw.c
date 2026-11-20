@@ -201,7 +201,9 @@ static const struct netdev_ops_s g_am263x_cpsw_ops =
 
 static struct am263x_cpsw_s g_am263x_cpsw;
 
-/* Locally administered; the board should supply a real one */
+/* Locally administered: only when neither the eFuse nor the board has
+ * an address.
+ */
 
 static const uint8_t g_cpsw_defmac[6] =
 {
@@ -225,6 +227,26 @@ uint8_t g_am263x_cpsw_desc[AM263X_CPSW_DESC_REGION_SIZE]
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
+
+/****************************************************************************
+ * Name: am263x_macaddr_valid
+ *
+ * Description:
+ *   A usable station address: not all zeros, not all ones, not multicast.
+ *
+ ****************************************************************************/
+
+static bool am263x_macaddr_valid(FAR const uint8_t mac[6])
+{
+  static const uint8_t zero[6];
+  static const uint8_t ones[6] =
+  {
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+  };
+
+  return (mac[0] & 1) == 0 && memcmp(mac, zero, 6) != 0 &&
+         memcmp(mac, ones, 6) != 0;
+}
 
 static inline uint32_t cpsw_addr(FAR volatile void *p)
 {
@@ -939,16 +961,44 @@ static FAR netpkt_t *am263x_cpsw_receive(FAR struct netdev_lowerhalf_s *dev)
  ****************************************************************************/
 
 /****************************************************************************
- * Name: am263x_cpsw_macaddr
- *
- * Description:
- *   Default board hook: no address of the board's own, so the fixed one.
- *
+ * Name: am263x_efuse_macaddr
  ****************************************************************************/
 
-weak_function int am263x_cpsw_macaddr(uint8_t mac[6])
+int am263x_efuse_macaddr(uint8_t mac[6])
 {
-  return -ENOENT;
+  uint32_t id0 = getreg32(AM263X_TOP_CTRL_MAC_ID0);
+  uint32_t id1 = getreg32(AM263X_TOP_CTRL_MAC_ID1);
+
+  mac[0] = (id1 >> 8) & 0xff;
+  mac[1] = id1 & 0xff;
+  mac[2] = (id0 >> 24) & 0xff;
+  mac[3] = (id0 >> 16) & 0xff;
+  mac[4] = (id0 >> 8) & 0xff;
+  mac[5] = id0 & 0xff;
+
+  return am263x_macaddr_valid(mac) ? OK : -ENOENT;
+}
+
+/****************************************************************************
+ * Name: am263x_cpsw_setmacaddr
+ ****************************************************************************/
+
+int am263x_cpsw_setmacaddr(FAR const uint8_t mac[6])
+{
+  FAR struct am263x_cpsw_s *priv = &g_am263x_cpsw;
+
+  if (!am263x_macaddr_valid(mac))
+    {
+      return -EINVAL;
+    }
+
+  if (priv->up)
+    {
+      return -EBUSY;
+    }
+
+  memcpy(priv->dev.netdev.d_mac.ether.ether_addr_octet, mac, 6);
+  return OK;
 }
 
 /****************************************************************************
@@ -977,8 +1027,13 @@ void arm_netinitialize(void)
   priv->txdesc = priv->rxdesc + CPSW_NRXDESC;
   spin_lock_init(&priv->lock);
 
-  if (am263x_cpsw_macaddr(mac) < 0)
+  /* The SoC's own address, from the eFuse.  Without one, a fixed
+   * placeholder until the board sets one (am263x_cpsw_setmacaddr()).
+   */
+
+  if (am263x_efuse_macaddr(mac) < 0)
     {
+      nwarn("WARNING: No MAC address in the eFuse\n");
       memcpy(mac, g_cpsw_defmac, sizeof(mac));
     }
 
