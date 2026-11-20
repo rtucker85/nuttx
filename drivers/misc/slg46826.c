@@ -271,6 +271,29 @@ static int slg46826_nvmread(FAR struct slg46826_dev_s *priv,
 }
 
 /****************************************************************************
+ * Name: slg46826_nvmerase
+ *
+ * Description:
+ *   Erase NVM pages 0-14.  The registers keep the old design until the
+ *   next reset reloads them from the (now blank) NVM.
+ *
+ ****************************************************************************/
+
+static void slg46826_nvmerase(FAR struct slg46826_dev_s *priv)
+{
+  uint8_t val;
+  int page;
+
+  for (page = 0; page < SLG46826_NVM_PAGES; page++)
+    {
+      val = SLG46826_ERSR_ERASE(page);
+      slg46826_writeblk(priv, SLG46826_BLOCK_REG, SLG46826_REG_ERSR,
+                        &val, 1);
+      nxsched_usleep(SLG46826_ERASE_MS * 1000);
+    }
+}
+
+/****************************************************************************
  * Name: slg46826_nvmprogram
  *
  * Description:
@@ -283,17 +306,10 @@ static int slg46826_nvmprogram(FAR struct slg46826_dev_s *priv,
                                FAR const uint8_t *image)
 {
   FAR uint8_t *readback;
-  uint8_t val;
   int page;
   int ret;
 
-  for (page = 0; page < SLG46826_NVM_PAGES; page++)
-    {
-      val = SLG46826_ERSR_ERASE(page);
-      slg46826_writeblk(priv, SLG46826_BLOCK_REG, SLG46826_REG_ERSR,
-                        &val, 1);
-      nxsched_usleep(SLG46826_ERASE_MS * 1000);
-    }
+  slg46826_nvmerase(priv);
 
   for (page = 0; page < SLG46826_NVM_PAGES; page++)
     {
@@ -530,7 +546,8 @@ static int slg46826_ioctl(FAR struct file *filep, int cmd,
   FAR uint8_t *buf = (FAR uint8_t *)(uintptr_t)arg;
   int ret;
 
-  if (cmd != SLG46826IOC_RESET && buf == NULL)
+  if (cmd != SLG46826IOC_RESET && cmd != SLG46826IOC_NVMERASE &&
+      buf == NULL)
     {
       return -EINVAL;
     }
@@ -553,6 +570,11 @@ static int slg46826_ioctl(FAR struct file *filep, int cmd,
 
       case SLG46826IOC_NVMPROGRAM:
         ret = slg46826_nvmprogram(priv, buf);
+        break;
+
+      case SLG46826IOC_NVMERASE:
+        slg46826_nvmerase(priv);
+        ret = OK;
         break;
 
       case SLG46826IOC_RESET:

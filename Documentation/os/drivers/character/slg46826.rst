@@ -26,6 +26,9 @@ so ``xd`` and ``hexdump`` work on the device node.  ioctls:
   verify.  The erase command is always NACKed by the device (a known
   erratum), so each page erase is followed by a fixed delay.
 * ``SLG46826IOC_RESET``: soft reset, reloading the registers from NVM.
+* ``SLG46826IOC_NVMERASE``: erase NVM pages 0-14 (with the same fixed
+  delays).  The registers keep running the old design until the next reset
+  or power cycle loads the blank NVM.
 
 The image arguments are ``SLG46826_IMAGE_SIZE`` (256) bytes, laid out as the
 device's map.
