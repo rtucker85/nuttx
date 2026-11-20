@@ -62,6 +62,15 @@
 #define AM263X_MPU_NORMAL_WB     (MPU_RACR_TEX(1) | MPU_RACR_C | \
                                   MPU_RACR_B | MPU_RACR_AP_RWRW)
 
+/* The same, read-only: ATCM, which holds only the vector table.  A write
+ * through a NULL pointer would otherwise land in the vectors and their
+ * literal pool and send the next exception anywhere; this way it faults
+ * where it happens.
+ */
+
+#define AM263X_MPU_NORMAL_RO     (MPU_RACR_TEX(1) | MPU_RACR_C | \
+                                  MPU_RACR_B | MPU_RACR_AP_RORO)
+
 /****************************************************************************
  * Private Data
  ****************************************************************************/
@@ -69,7 +78,7 @@
 static const struct mpu_region_s g_am263x_mpu_regions[] =
 {
   { 0x00000000,             0x80000000,        AM263X_MPU_DEVICE    },
-  { AM263X_TCMA_BASE,       AM263X_TCMA_SIZE,  AM263X_MPU_NORMAL_WB },
+  { AM263X_TCMA_BASE,       AM263X_TCMA_SIZE,  AM263X_MPU_NORMAL_RO },
   { AM263X_TCMB_BASE,       AM263X_TCMB_SIZE,  AM263X_MPU_NORMAL_WB },
   { AM263X_OCRAM_BASE,      AM263X_OCRAM_SIZE, AM263X_MPU_NORMAL_WB },
 #ifdef CONFIG_AM263X_CPSW_ETH
