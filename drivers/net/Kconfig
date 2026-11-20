@@ -952,6 +952,25 @@ config NET_PHY_TI_DP83869_RX_DELAY_PS
 		The delay the PHY adds to the RX clock with
 		PHY_INTERFACE_RGMII_ID or _RXID, in 250 ps steps.
 
+config NET_PHY_TI_DP83869_LEDS
+	bool "Set the LED functions"
+	default n
+	---help---
+		Write NET_PHY_TI_DP83869_LEDCR1 to LEDCR1 (register 0x18), which
+		selects what each LED pin shows.  Off: the PHY's defaults.
+
+config NET_PHY_TI_DP83869_LEDCR1
+	hex "LEDCR1 value"
+	default 0x6150
+	depends on NET_PHY_TI_DP83869_LEDS
+	---help---
+		One 4-bit function per pin: GPIO (15:12), LED_2 (11:8), LED_1
+		(7:4), LED_0 (3:0).  Functions: 0 link, 1 RX/TX activity, 2 TX
+		activity, 3 RX activity, 4 collision, 5 1000BASE-T link,
+		6 100BASE-TX link, 7 10BASE-T link, 8 10/100 link, 9 100/1000
+		link, 0xa full duplex, 0xb link with activity blink, 0xd RX/TX
+		error, 0xe RX error.  The default 0x6150 is the PHY's own.
+
 endif # NET_PHY_TI_DP83869
 
 endif # NET_PHYLIB

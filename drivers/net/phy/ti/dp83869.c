@@ -20,8 +20,9 @@
  *
  ****************************************************************************/
 
-/* TI DP83869HM gigabit PHY, in RGMII-to-copper mode.  The only setup
- * beyond the generic Clause 22 driver is the RGMII clock delays.
+/* TI DP83869HM gigabit PHY, in RGMII-to-copper mode.  The setup beyond
+ * the generic Clause 22 driver is the RGMII clock delays and, optionally,
+ * the LED functions.
  */
 
 /****************************************************************************
@@ -47,6 +48,8 @@
 #define DP83869_PHY_ID_MASK     0xfffffff0
 
 /* Extended registers, reached through MMD 0x1f */
+
+#define DP83869_LEDCR1          0x18
 
 #define DP83869_DEVADDR         0x1f
 
@@ -168,6 +171,14 @@ static int dp83869_config_init(FAR struct phy_device_s *phydev)
     {
       return ret;
     }
+
+#ifdef CONFIG_NET_PHY_TI_DP83869_LEDS
+  ret = phy_write(phydev, DP83869_LEDCR1, CONFIG_NET_PHY_TI_DP83869_LEDCR1);
+  if (ret < 0)
+    {
+      return ret;
+    }
+#endif
 
   return genphy_config_init(phydev);
 }
