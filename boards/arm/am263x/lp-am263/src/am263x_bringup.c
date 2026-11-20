@@ -78,6 +78,14 @@ int am263x_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_AM263X_I2C1
+  ret = am263x_eeprom_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to initialize the EEPROM: %d\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_AM263X_MDIO
   ret = am263x_ethernet_initialize();
   if (ret < 0)
