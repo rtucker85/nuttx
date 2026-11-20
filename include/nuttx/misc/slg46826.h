@@ -64,12 +64,17 @@
  *                         arg: FAR const uint8_t[SLG46826_IMAGE_SIZE]
  * SLG46826IOC_RESET       Soft reset: reload the registers from NVM.
  *                         arg: none
+ * SLG46826IOC_NVMERASE    Erase NVM pages 0-14.  The registers keep the
+ *                         old design until the next reset.  Wears the
+ *                         NVM.
+ *                         arg: none
  */
 
 #define SLG46826IOC_RAMLOAD     _SLGIOC(1)
 #define SLG46826IOC_NVMREAD     _SLGIOC(2)
 #define SLG46826IOC_NVMPROGRAM  _SLGIOC(3)
 #define SLG46826IOC_RESET       _SLGIOC(4)
+#define SLG46826IOC_NVMERASE    _SLGIOC(5)
 
 /****************************************************************************
  * Public Types
