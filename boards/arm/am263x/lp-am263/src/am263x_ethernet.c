@@ -41,6 +41,7 @@
 #include <nuttx/net/mii.h>
 #include <nuttx/net/ti_phy.h>
 
+#include "am263x_cpsw.h"
 #include "am263x_gpio.h"
 #include "am263x_mdio.h"
 #include "am263x_pinmux.h"
@@ -154,9 +155,7 @@ static int am263x_phy_probe(FAR struct mdio_bus_s *bus)
 int am263x_ethernet_initialize(void)
 {
   FAR struct mdio_bus_s *bus;
-#ifdef CONFIG_NET_PHY_TI_DP83869
   int ret;
-#endif
 
   am263x_pinmux_config(g_eth_pins,
                        sizeof(g_eth_pins) / sizeof(g_eth_pins[0]));
@@ -177,6 +176,22 @@ int am263x_ethernet_initialize(void)
     }
 #endif
 
+#if defined(CONFIG_AM263X_CPSW_ETH) && defined(CONFIG_AM263X_I2C1) && \
+    defined(CONFIG_I2C_EE_24XX)
+  /* No MAC address in the eFuse: use the one in the board ID EEPROM */
+
+  {
+    uint8_t mac[6];
+
+    if (am263x_efuse_macaddr(mac) < 0 && am263x_eeprom_macaddr(mac) >= 0)
+      {
+        ret = am263x_cpsw_setmacaddr(mac);
+        syslog(LOG_INFO, "eth0: MAC address from the EEPROM: %d\n", ret);
+      }
+  }
+#endif
+
+  UNUSED(ret);
   return am263x_phy_probe(bus);
 }
 

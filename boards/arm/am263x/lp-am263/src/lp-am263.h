@@ -29,6 +29,8 @@
 
 #include <nuttx/config.h>
 
+#include <stdint.h>
+
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
@@ -57,6 +59,13 @@ int am263x_spi_initialize(void);
 
 #ifdef CONFIG_AM263X_MDIO
 int am263x_ethernet_initialize(void);
+#endif
+
+#ifdef CONFIG_AM263X_I2C1
+int am263x_eeprom_initialize(void);
+#  ifdef CONFIG_I2C_EE_24XX
+int am263x_eeprom_macaddr(uint8_t mac[6]);
+#  endif
 #endif
 
 #endif /* __BOARDS_ARM_AM263X_LP_AM263_SRC_LP_AM263_H */
