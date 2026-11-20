@@ -37,6 +37,7 @@
 #include <nuttx/sched.h>
 #include <nuttx/spinlock.h>
 #include <nuttx/signal.h>
+#include <nuttx/tls.h>
 
 #include "group/group.h"
 #include "sched/sched.h"
@@ -245,6 +246,14 @@ static void nxsig_abnormal_termination(int signo)
 
       return;
     }
+
+  /* Run this thread's cleanup handlers, as cancelling the other threads
+   * above runs theirs.  A thread killed in poll() holds references to its
+   * files until poll's cleanup handler drops them; without that, the files
+   * are never closed and their drivers keep the stale poll structures.
+   */
+
+  tls_cleanup_popall(tls_get_info());
 
 #ifndef CONFIG_DISABLE_PTHREAD
   /* Check if the currently running task is actually a pthread */
