@@ -138,8 +138,9 @@ config AM263X_CPSW_ETH
 	---help---
 		Ethernet through one MAC port of the CPSW3G, as eth0.  The
 		switch is bypassed: the other MAC port is disabled.  The board
-		registers the PHY driver (PHYLIB) and may supply the MAC address
-		(am263x_cpsw_macaddr()).
+		registers the PHY driver (PHYLIB).  The MAC address is the one
+		in the device's eFuse, unless the board sets another
+		(am263x_cpsw_setmacaddr()).
 
 endmenu # AM263x Peripheral Selection
 

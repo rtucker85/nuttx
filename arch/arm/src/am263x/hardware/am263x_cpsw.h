@@ -212,6 +212,13 @@
 #define ALE_PORTCTL_STATE_FORWARD     3
 #define ALE_PORTCTL_STATE_MASK        3
 
+/* TOP_CTRL MAC_ID0/1: the eFuse MAC address.  MAC_ID1 holds bytes 0-1
+ * (byte 0 in bits 15:8), MAC_ID0 bytes 2-5 (byte 2 in bits 31:24).
+ */
+
+#define AM263X_TOP_CTRL_MAC_ID0       (AM263X_TOP_CTRL_BASE + 0x0500)
+#define AM263X_TOP_CTRL_MAC_ID1       (AM263X_TOP_CTRL_BASE + 0x0504)
+
 /* MSS_CTRL CPSW_CONTROL: the MAC ports' interface modes */
 
 #define AM263X_MSS_CTRL_CPSW_CONTROL  (AM263X_MSS_CTRL_BASE + 0x0810)
