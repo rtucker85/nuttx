@@ -28,6 +28,8 @@
 
 #include <stdint.h>
 
+#include <nuttx/arch.h>
+
 #include "arm_internal.h"
 #include "hardware/am263x_rcm.h"
 #include "am263x_clockconfig.h"
@@ -138,5 +140,27 @@ void am263x_clockconfig(void)
 #endif
 #ifdef CONFIG_AM263X_MCSPI4
   am263x_mcspi_clock(4);
+#endif
+
+  /* CPSW: its clock (SYS_CLK, 200 MHz) and the RGMII clocks are ungated
+   * from reset.  Reset the switch so that it starts clean even after a
+   * JTAG reload or an SBL that used it.  TI holds the reset for 200 ns
+   * and waits another 200 ns after it.
+   */
+
+#ifdef CONFIG_AM263X_CPSW
+  putreg32(RCM_CLK_UNGATED, AM263X_MSS_RCM_CPSW_CLK_GATE);
+  putreg32(RCM_RST_ASSERT, AM263X_MSS_RCM_CPSW_RST_CTRL);
+  while (getreg32(AM263X_MSS_RCM_CPSW_RST_CTRL) != RCM_RST_ASSERT)
+    {
+    }
+
+  up_udelay(1);
+  putreg32(RCM_RST_DEASSERT, AM263X_MSS_RCM_CPSW_RST_CTRL);
+  while (getreg32(AM263X_MSS_RCM_CPSW_RST_CTRL) != RCM_RST_DEASSERT)
+    {
+    }
+
+  up_udelay(1);
 #endif
 }

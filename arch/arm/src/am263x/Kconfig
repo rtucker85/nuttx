@@ -112,6 +112,21 @@ config AM263X_I2C3
 	default n
 	select AM263X_I2C
 
+config AM263X_CPSW
+	bool
+	default n
+
+config AM263X_MDIO
+	bool "CPSW MDIO controller"
+	default n
+	depends on NET
+	select AM263X_CPSW
+	select NETDEVICES
+	select MDIO_BUS
+	---help---
+		The CPSW's MDIO controller as an MDIO bus lower half
+		(am263x_mdio_initialize()), for managing the Ethernet PHYs.
+
 endmenu # AM263x Peripheral Selection
 
 menu "AM263x I2C Configuration"
@@ -135,6 +150,19 @@ config AM263X_I2C_LOOPBACK
 		the bus.  For a board self-test.
 
 endmenu # AM263x I2C Configuration
+
+menu "AM263x MDIO Configuration"
+	depends on AM263X_MDIO
+
+config AM263X_MDIO_FREQUENCY
+	int "MDC frequency (Hz)"
+	default 2200000
+	---help---
+		The MDIO bus clock, divided down from the 200 MHz CPSW clock.
+		IEEE 802.3 allows up to 2.5 MHz; many PHYs, the DP83869
+		among them, accept more.
+
+endmenu # AM263x MDIO Configuration
 
 menu "AM263x MCSPI Configuration"
 	depends on AM263X_MCSPI
