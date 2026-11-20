@@ -233,8 +233,8 @@ config AM263X_CPSW_ETH_NTXDESC
 	int "TX descriptors"
 	default 16
 	---help---
-		Each has a 1536-byte buffer.  Also the number of packets the
-		driver may hold (its TX quota).
+		Each has a 1536-byte buffer.  The driver holds at most one
+		packet fewer than this (its TX quota).
 
 endmenu # AM263x CPSW Ethernet Configuration
 

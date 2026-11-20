@@ -101,11 +101,13 @@
 #define CPSW_ALIGN_UP(n) \
   (((n) + CPSW_CACHELINE - 1) & ~(CPSW_CACHELINE - 1))
 
-/* Packets the driver may hold: every TX descriptor's, and the one RX
- * packet between netpkt_alloc() and the upper half.
+/* Packets the driver may hold.  TX: one fewer than the descriptors, so
+ * that the next descriptor's packet has always been freed (with all of
+ * them held, the head would wrap onto a packet not yet freed).  RX: the
+ * one between netpkt_alloc() and the upper half.
  */
 
-#define CPSW_TX_QUOTA      CPSW_NTXDESC
+#define CPSW_TX_QUOTA      (CPSW_NTXDESC - 1)
 #define CPSW_RX_QUOTA      2
 
 #define CPSW_LINK_POLL     MSEC2TICK(500)
@@ -747,12 +749,17 @@ static int am263x_cpsw_transmit(FAR struct netdev_lowerhalf_s *dev,
       return -EMSGSIZE;
     }
 
-  /* The TX quota keeps the packets held at no more than the descriptors,
-   * so the next descriptor's packet has been freed.
+  /* Free what has completed.  With the TX quota one below the number of
+   * descriptors, that frees the next descriptor's packet.
    */
 
+  am263x_cpsw_reclaim(dev);
+
   i = priv->txhead;
-  DEBUGASSERT(priv->txpkt[i] == NULL);
+  if (priv->txpkt[i] != NULL)
+    {
+      return -EBUSY;
+    }
 
   buf = g_cpsw_txbuf[i];
   netpkt_copyout(dev, buf, pkt, len, 0);
