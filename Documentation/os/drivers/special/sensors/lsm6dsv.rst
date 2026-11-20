@@ -3,7 +3,10 @@ LSM6DSV
 =======
 
 The LSM6DSV is a 6-axis IMU with a 3-axis gyroscope and a 3-axis
-accelerometer by STMicroelectronics.  This driver supports it on SPI only
+accelerometer by STMicroelectronics.  The driver also accepts the
+LSM6DSV320X (``WHO_AM_I`` 0x73), which has the same accelerometer and
+gyroscope plus a high-g accelerometer that the driver does not use; on it
+the gyroscope's largest scale is 2000 dps.  This driver supports it on SPI only
 and uses the :doc:`uorb </os/drivers/special/sensors/sensors_uorb>`
 interface.
 
@@ -29,7 +32,8 @@ Application Programming Interface
    int lsm6dsv_register_uorb(int devno, FAR struct spi_dev_s *spi,
                              uint32_t devid);
 
-Registering the driver checks ``WHO_AM_I`` (0x70), resets the device and
+Registering the driver checks ``WHO_AM_I`` (0x70, or 0x73 for the
+LSM6DSV320X), resets the device and
 registers two uORB topics under ``/dev/uorb/``: ``sensor_accel<n>`` (m/s²)
 and ``sensor_gyro<n>`` (rad/s), where ``n`` is ``devno``.  ``devid`` is the
 device's ID for ``SPI_SELECT()``.
