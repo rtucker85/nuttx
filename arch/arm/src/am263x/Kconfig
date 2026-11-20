@@ -127,6 +127,20 @@ config AM263X_MDIO
 		The CPSW's MDIO controller as an MDIO bus lower half
 		(am263x_mdio_initialize()), for managing the Ethernet PHYs.
 
+config AM263X_CPSW_ETH
+	bool "CPSW Ethernet"
+	default n
+	depends on NET
+	select AM263X_MDIO
+	select NET_PHYLIB
+	select MM_IOB
+	select ARCH_HAVE_NETDEV_STATISTICS
+	---help---
+		Ethernet through one MAC port of the CPSW3G, as eth0.  The
+		switch is bypassed: the other MAC port is disabled.  The board
+		registers the PHY driver (PHYLIB) and may supply the MAC address
+		(am263x_cpsw_macaddr()).
+
 endmenu # AM263x Peripheral Selection
 
 menu "AM263x I2C Configuration"
@@ -163,6 +177,66 @@ config AM263X_MDIO_FREQUENCY
 		among them, accept more.
 
 endmenu # AM263x MDIO Configuration
+
+menu "AM263x CPSW Ethernet Configuration"
+	depends on AM263X_CPSW_ETH
+
+config AM263X_CPSW_ETH_PORT
+	int "MAC port"
+	default 1
+	range 1 2
+	---help---
+		The CPSW MAC port the interface uses.  On the LP-AM263 port 1
+		(RGMII1) goes to J7.
+
+config AM263X_CPSW_ETH_PHYADDR
+	int "PHY MDIO address"
+	default 3
+	range 0 31
+
+config AM263X_CPSW_ETH_RGMII_INTERNAL_DELAY
+	bool "SoC adds the RGMII delays"
+	default y
+	---help---
+		Leave the SoC's internal RGMII clock delays on (CPSW_CONTROL
+		RGMIIn_ID_MODE = 0), as TI's SDK does for the LP-AM263.
+
+choice
+	prompt "RGMII delays the PHY adds"
+	default AM263X_CPSW_ETH_PHY_RGMII_ID
+	---help---
+		The PHY interface mode PHYLIB passes to the PHY driver.  The
+		LP-AM263, as TI's SDK sets it up, has the DP83869 shift both
+		clocks (and CONFIG_NET_PHY_TI_DP83869_TX/RX_DELAY_PS = 500).
+
+config AM263X_CPSW_ETH_PHY_RGMII
+	bool "None (RGMII)"
+
+config AM263X_CPSW_ETH_PHY_RGMII_ID
+	bool "TX and RX (RGMII_ID)"
+
+config AM263X_CPSW_ETH_PHY_RGMII_TXID
+	bool "TX only (RGMII_TXID)"
+
+config AM263X_CPSW_ETH_PHY_RGMII_RXID
+	bool "RX only (RGMII_RXID)"
+
+endchoice
+
+config AM263X_CPSW_ETH_NRXDESC
+	int "RX descriptors"
+	default 32
+	---help---
+		Each has a 1536-byte buffer.
+
+config AM263X_CPSW_ETH_NTXDESC
+	int "TX descriptors"
+	default 16
+	---help---
+		Each has a 1536-byte buffer.  Also the number of packets the
+		driver may hold (its TX quota).
+
+endmenu # AM263x CPSW Ethernet Configuration
 
 menu "AM263x MCSPI Configuration"
 	depends on AM263X_MCSPI

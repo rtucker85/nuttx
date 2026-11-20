@@ -33,6 +33,7 @@
 #include "sctlr.h"
 #include "chip.h"
 #include "am263x_mpuinit.h"
+#include "am263x_cpsw.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -51,6 +52,11 @@
 
 #define AM263X_MPU_DEVICE        (MPU_RACR_AP_RWRW | MPU_RACR_XN)
 
+/* Normal, non-cacheable (TEX=1, C=0, B=0), execute-never: DMA descriptors */
+
+#define AM263X_MPU_NORMAL_NC     (MPU_RACR_TEX(1) | MPU_RACR_AP_RWRW | \
+                                  MPU_RACR_XN)
+
 /* Normal, write-back write-allocate (TEX=1, C=1, B=1), executable */
 
 #define AM263X_MPU_NORMAL_WB     (MPU_RACR_TEX(1) | MPU_RACR_C | \
@@ -66,6 +72,10 @@ static const struct mpu_region_s g_am263x_mpu_regions[] =
   { AM263X_TCMA_BASE,       AM263X_TCMA_SIZE,  AM263X_MPU_NORMAL_WB },
   { AM263X_TCMB_BASE,       AM263X_TCMB_SIZE,  AM263X_MPU_NORMAL_WB },
   { AM263X_OCRAM_BASE,      AM263X_OCRAM_SIZE, AM263X_MPU_NORMAL_WB },
+#ifdef CONFIG_AM263X_CPSW_ETH
+  { (uintptr_t)g_am263x_cpsw_desc, AM263X_CPSW_DESC_REGION_SIZE,
+    AM263X_MPU_NORMAL_NC },
+#endif
 };
 
 /****************************************************************************
