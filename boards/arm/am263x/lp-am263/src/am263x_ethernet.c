@@ -39,6 +39,7 @@
 
 #include <nuttx/net/mdio.h>
 #include <nuttx/net/mii.h>
+#include <nuttx/net/ti_phy.h>
 
 #include "am263x_gpio.h"
 #include "am263x_mdio.h"
@@ -145,13 +146,17 @@ static int am263x_phy_probe(FAR struct mdio_bus_s *bus)
  *
  * Description:
  *   Mux the RGMII1 and MDIO pads, route RGMII1 to the CPSW, bring up the
- *   MDIO bus and report the PHYs on it.
+ *   MDIO bus, register the PHY driver and report the PHYs on the bus.
+ *   The CPSW driver (eth0) uses the PHY when the interface comes up.
  *
  ****************************************************************************/
 
 int am263x_ethernet_initialize(void)
 {
   FAR struct mdio_bus_s *bus;
+#ifdef CONFIG_NET_PHY_TI_DP83869
+  int ret;
+#endif
 
   am263x_pinmux_config(g_eth_pins,
                        sizeof(g_eth_pins) / sizeof(g_eth_pins[0]));
@@ -163,6 +168,14 @@ int am263x_ethernet_initialize(void)
     {
       return -ENODEV;
     }
+
+#ifdef CONFIG_NET_PHY_TI_DP83869
+  ret = dp83869_register();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: dp83869_register failed: %d\n", ret);
+    }
+#endif
 
   return am263x_phy_probe(bus);
 }
