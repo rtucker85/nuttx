@@ -2532,6 +2532,29 @@ config SENSORS_FS3000_THREAD_STACKSIZE
 
 endif # SENSORS_FS3000
 
+config SENSORS_ADC_UORB
+	bool "ADC to uORB bridge"
+	default n
+	depends on ADC
+	select SCHED_LPWORK
+	---help---
+		Publish the channels of a software-triggered ADC lower half,
+		scaled to real units, as uORB topics (sensor_voltage,
+		sensor_current, sensor_temp, ...), plus an optional topic of
+		raw codes.  The board describes the channels; see
+		include/nuttx/sensors/adc_uorb.h.
+
+if SENSORS_ADC_UORB
+
+config SENSORS_ADC_UORB_MIN_INTERVAL
+	int "Shortest scan interval (us)"
+	default 1000
+	---help---
+		Requests for a shorter interval are raised to this.  Scans run
+		on the low-priority work queue.
+
+endif # SENSORS_ADC_UORB
+
 config SENSORS_TMP117
 	bool "Texas Instruments TMP117 temperature sensor"
 	default n
