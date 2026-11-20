@@ -43,4 +43,12 @@ if(CONFIG_AM263X_MCSPI)
   list(APPEND SRCS am263x_spi.c)
 endif()
 
+if(CONFIG_AM263X_CPSW)
+  list(APPEND SRCS am263x_cpsw.c)
+endif()
+
+if(CONFIG_AM263X_MDIO)
+  list(APPEND SRCS am263x_mdio.c)
+endif()
+
 target_sources(arch PRIVATE ${SRCS})

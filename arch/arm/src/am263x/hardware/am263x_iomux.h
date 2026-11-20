@@ -44,10 +44,25 @@
 
 /* Pad configuration register offsets (one 32-bit register per pad) */
 
+#define AM263X_PAD_QSPI_CSN1        0x0004  /* GPIO1 in mode 7 */
 #define AM263X_PAD_SPI0_CS0         0x002c
 #define AM263X_PAD_SPI0_CLK         0x0030
 #define AM263X_PAD_SPI0_D0          0x0034
 #define AM263X_PAD_SPI0_D1          0x0038
+#define AM263X_PAD_RGMII1_RXC       0x0074  /* RGMII1 and MDIO: mode 0 */
+#define AM263X_PAD_RGMII1_RX_CTL    0x0078
+#define AM263X_PAD_RGMII1_RD0       0x007c
+#define AM263X_PAD_RGMII1_RD1       0x0080
+#define AM263X_PAD_RGMII1_RD2       0x0084
+#define AM263X_PAD_RGMII1_RD3       0x0088
+#define AM263X_PAD_RGMII1_TXC       0x008c
+#define AM263X_PAD_RGMII1_TX_CTL    0x0090
+#define AM263X_PAD_RGMII1_TD0       0x0094
+#define AM263X_PAD_RGMII1_TD1       0x0098
+#define AM263X_PAD_RGMII1_TD2       0x009c
+#define AM263X_PAD_RGMII1_TD3       0x00a0
+#define AM263X_PAD_MDIO_MDIO        0x00a4
+#define AM263X_PAD_MDIO_MDC         0x00a8
 #define AM263X_PAD_EPWM7_B          0x00e8  /* GPIO58 in mode 7 */
 #define AM263X_PAD_EPWM8_A          0x00ec  /* I2C3_SDA in mode 2 */
 #define AM263X_PAD_EPWM8_B          0x00f0  /* I2C3_SCL in mode 2 */
