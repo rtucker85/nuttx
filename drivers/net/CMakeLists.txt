@@ -148,6 +148,10 @@ if(CONFIG_NET)
     if(CONFIG_NET_PHY_REALTEK_RTL9000B)
       list(APPEND SRCS phy/realtek/rtl9000b.c phy/realtek/rtl9000b_fw.c)
     endif()
+
+    if(CONFIG_NET_PHY_TI_DP83869)
+      list(APPEND SRCS phy/ti/dp83869.c)
+    endif()
   endif()
 
   target_sources(drivers PRIVATE ${SRCS})

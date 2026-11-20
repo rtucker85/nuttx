@@ -925,6 +925,35 @@ config NET_PHY_REALTEK_RTL9000B
 		Support for the Realtek RTL9000B 100BASE-T1 automotive PHY.
 		Enable only on boards that use an RTL9000B.
 
+config NET_PHY_TI_DP83869
+	bool "TI DP83869 Gigabit PHY"
+	default n
+	select MDIO_CLAUSE_45
+	---help---
+		Support for the TI DP83869HM in RGMII-to-copper mode, including
+		its RGMII clock delays.  Its extended registers are reached
+		through Clause 45 over Clause 22, hence MDIO_CLAUSE_45.
+
+if NET_PHY_TI_DP83869
+
+config NET_PHY_TI_DP83869_TX_DELAY_PS
+	int "RGMII TX clock delay (ps)"
+	default 2000
+	range 250 4000
+	---help---
+		The delay the PHY adds to the TX clock with
+		PHY_INTERFACE_RGMII_ID or _TXID, in 250 ps steps.
+
+config NET_PHY_TI_DP83869_RX_DELAY_PS
+	int "RGMII RX clock delay (ps)"
+	default 2000
+	range 250 4000
+	---help---
+		The delay the PHY adds to the RX clock with
+		PHY_INTERFACE_RGMII_ID or _RXID, in 250 ps steps.
+
+endif # NET_PHY_TI_DP83869
+
 endif # NET_PHYLIB
 
 endif # NETDEVICES
