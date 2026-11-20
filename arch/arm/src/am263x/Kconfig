@@ -142,7 +142,96 @@ config AM263X_CPSW_ETH
 		in the device's eFuse, unless the board sets another
 		(am263x_cpsw_setmacaddr()).
 
+config AM263X_CONTROLSS
+	bool
+	default n
+
+config AM263X_ADC
+	bool
+	default n
+	select AM263X_CONTROLSS
+
+config AM263X_ADC0
+	bool "ADC0"
+	default n
+	depends on ADC
+	select AM263X_ADC
+
+config AM263X_ADC1
+	bool "ADC1"
+	default n
+	depends on ADC
+	select AM263X_ADC
+
+config AM263X_ADC2
+	bool "ADC2"
+	default n
+	depends on ADC
+	select AM263X_ADC
+
+config AM263X_ADC3
+	bool "ADC3"
+	default n
+	depends on ADC
+	select AM263X_ADC
+
+config AM263X_ADC4
+	bool "ADC4"
+	default n
+	depends on ADC
+	select AM263X_ADC
+
+config AM263X_EPWM
+	bool "ePWM"
+	default n
+	depends on PWM
+	select AM263X_CONTROLSS
+	---help---
+		The ePWMs (EPWM0-31) as PWM lower halves
+		(am263x_pwminitialize()): output A is channel 1, output B
+		channel 2.  Each can also start ADC conversions through its
+		SOCA and SOCB (am263x_pwm_socconfig()).
+
 endmenu # AM263x Peripheral Selection
+
+menu "AM263x ADC Configuration"
+	depends on AM263X_ADC
+
+config AM263X_ADC_PRESCALE
+	int "ADC clock prescaler (ADCCTL2.PRESCALE)"
+	default 6
+	range 0 15
+	---help---
+		ADCCLK = SYSCLK (200 MHz) / divider.  0 is /1, 1 is invalid,
+		and n >= 2 is /((n + 2) / 2): 2 is /2, 3 is /2.5, 6 is /4
+		(50 MHz), 14 is /8.  Keep ADCCLK within the datasheet maximum.
+
+config AM263X_ADC_SAMPLE_WINDOW
+	int "Sample window (SYSCLK cycles)"
+	default 32
+	range 1 512
+	---help---
+		How long each SOC samples its input, in 5 ns SYSCLK cycles.  At
+		least one ADCCLK cycle and the datasheet minimum; longer for
+		high-impedance sources.
+
+config AM263X_ADC_EXTERNAL_REF
+	bool "External reference"
+	default n
+	---help---
+		The board drives VREFHI.  Without this the driver turns on the
+		internal reference buffer of each enabled ADC's group (ADC0,
+		ADC1/2, ADC3/4), as TI's SDK does by default.
+
+config AM263X_ADC_INTXBAR
+	int "First INTXBAR output"
+	default 0
+	range 0 27
+	---help---
+		ADCn's ADCINT1 reaches the CPU through CONTROLSS INTXBAR output
+		AM263X_ADC_INTXBAR + n (R5F interrupt 146 + that).
+
+endmenu # AM263x ADC Configuration
 
 menu "AM263x I2C Configuration"
 	depends on AM263X_I2C

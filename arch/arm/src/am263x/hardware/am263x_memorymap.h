@@ -40,6 +40,11 @@
 /* Peripherals */
 
 #define AM263X_ICSSM0_BASE          0x48000000  /* PRU-ICSS, see am263x_icssm.h */
+#define AM263X_EPWM0_BASE           0x50000000  /* EPWM0-31, 4 KB apart */
+#define AM263X_ADC0_RESULT_BASE     0x50100000  /* ADC0-4 results, 4 KB apart */
+#define AM263X_ADC0_BASE            0x502c0000  /* ADC0-4, 4 KB apart */
+#define AM263X_INTXBAR_BASE         0x502d5000  /* CONTROLSS interrupt xbar */
+#define AM263X_CSS_CTRL_BASE        0x502f0000  /* CONTROLSS_CTRL */
 #define AM263X_MSS_CTRL_BASE        0x50d00000
 #define AM263X_TOP_CTRL_BASE        0x50d80000
 #define AM263X_VIM_BASE             0x50f00000  /* each core sees its own */
