@@ -78,6 +78,14 @@ int am263x_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_AM263X_MDIO
+  ret = am263x_ethernet_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to initialize Ethernet: %d\n", ret);
+    }
+#endif
+
   UNUSED(ret);
   return OK;
 }

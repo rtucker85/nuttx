@@ -55,4 +55,8 @@ int am263x_bringup(void);
 int am263x_spi_initialize(void);
 #endif
 
+#ifdef CONFIG_AM263X_MDIO
+int am263x_ethernet_initialize(void);
+#endif
+
 #endif /* __BOARDS_ARM_AM263X_LP_AM263_SRC_LP_AM263_H */
