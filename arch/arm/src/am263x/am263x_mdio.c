@@ -91,6 +91,45 @@ static FAR struct mdio_bus_s *g_am263x_mdio_bus;
  ****************************************************************************/
 
 /****************************************************************************
+ * Name: am263x_mdio_enable
+ *
+ * Description:
+ *   Turn the controller on in normal mode: no manual (bit-bang) mode and
+ *   no state-change monitoring; software drives every frame through
+ *   USERACCESS0.
+ *
+ ****************************************************************************/
+
+static void am263x_mdio_enable(void)
+{
+  modifyreg32(AM263X_MDIO_POLL,
+              MDIO_POLL_MANUALMODE | MDIO_POLL_STATECHANGEMODE, 0);
+
+  putreg32(MDIO_CONTROL_ENABLE | MDIO_CONTROL_FAULTENB |
+           MDIO_CONTROL_CLKDIV(MDIO_CLKDIV), AM263X_MDIO_CONTROL);
+}
+
+/****************************************************************************
+ * Name: am263x_mdio_ready
+ *
+ * Description:
+ *   Make sure the controller is on.  The CPDMA soft reset resets the
+ *   MDIO controller too, and a frame started then never finishes.  The
+ *   Ethernet driver enables it again after its resets; this catches any
+ *   other.
+ *
+ ****************************************************************************/
+
+static void am263x_mdio_ready(void)
+{
+  if ((getreg32(AM263X_MDIO_CONTROL) & MDIO_CONTROL_ENABLE) == 0)
+    {
+      nwarn("WARNING: MDIO controller was reset, enabling it again\n");
+      am263x_mdio_enable();
+    }
+}
+
+/****************************************************************************
  * Name: am263x_mdio_wait
  *
  * Description:
@@ -128,6 +167,7 @@ static int am263x_mdio_read(FAR struct mdio_lowerhalf_s *lower,
 {
   int64_t ret;
 
+  am263x_mdio_ready();
   ret = am263x_mdio_wait();
   if (ret < 0)
     {
@@ -167,6 +207,7 @@ static int am263x_mdio_write(FAR struct mdio_lowerhalf_s *lower,
 {
   int64_t ret;
 
+  am263x_mdio_ready();
   ret = am263x_mdio_wait();
   if (ret < 0)
     {
@@ -200,20 +241,12 @@ static int am263x_mdio_write(FAR struct mdio_lowerhalf_s *lower,
 
 FAR struct mdio_bus_s *am263x_mdio_initialize(void)
 {
+  am263x_mdio_enable();
+
   if (g_am263x_mdio_bus != NULL)
     {
       return g_am263x_mdio_bus;
     }
-
-  /* Normal mode: no manual (bit-bang) mode and no state-change
-   * monitoring; software drives every frame through USERACCESS0.
-   */
-
-  modifyreg32(AM263X_MDIO_POLL,
-              MDIO_POLL_MANUALMODE | MDIO_POLL_STATECHANGEMODE, 0);
-
-  putreg32(MDIO_CONTROL_ENABLE | MDIO_CONTROL_FAULTENB |
-           MDIO_CONTROL_CLKDIV(MDIO_CLKDIV), AM263X_MDIO_CONTROL);
 
   ninfo("MDIO version %08" PRIx32 ", MDC %d Hz\n",
         getreg32(AM263X_MDIO_VERSION),

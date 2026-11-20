@@ -42,6 +42,10 @@
  * used by NuttX are named here; see the TRM interrupt map for the rest.
  */
 
+#define AM263X_IRQ_CPSW0_TX         12  /* CPDMA TX (pulse) */
+#define AM263X_IRQ_CPSW0_RX         13  /* CPDMA RX (pulse) */
+#define AM263X_IRQ_CPSW0_RX_THRESH  14
+#define AM263X_IRQ_CPSW0_MISC       15  /* CPTS, MDIO, statistics */
 #define AM263X_IRQ_UART0            38
 #define AM263X_IRQ_UART1            39
 #define AM263X_IRQ_UART2            40

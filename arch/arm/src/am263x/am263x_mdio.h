@@ -47,8 +47,8 @@
  *
  * Description:
  *   Enable the MDIO controller and register it with the MDIO upper half.
- *   The board must have muxed the MDIO and MDC pads.  Later calls return
- *   the same bus.
+ *   The board must have muxed the MDIO and MDC pads.  Later calls enable
+ *   the controller again (after a CPSW reset) and return the same bus.
  *
  * Returned Value:
  *   The MDIO bus, or NULL on failure.
