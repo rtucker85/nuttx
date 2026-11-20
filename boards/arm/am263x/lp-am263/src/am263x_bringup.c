@@ -86,6 +86,15 @@ int am263x_bringup(void)
     }
 #endif
 
+#if defined(CONFIG_AM263X_ADC1) || defined(CONFIG_AM263X_EPWM)
+  ret = am263x_analog_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to initialize the ADC or PWM: %d\n",
+             ret);
+    }
+#endif
+
 #ifdef CONFIG_AM263X_MDIO
   ret = am263x_ethernet_initialize();
   if (ret < 0)

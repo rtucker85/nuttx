@@ -57,6 +57,10 @@ int am263x_bringup(void);
 int am263x_spi_initialize(void);
 #endif
 
+#if defined(CONFIG_AM263X_ADC1) || defined(CONFIG_AM263X_EPWM)
+int am263x_analog_initialize(void);
+#endif
+
 #ifdef CONFIG_AM263X_MDIO
 int am263x_ethernet_initialize(void);
 #endif

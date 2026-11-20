@@ -36,6 +36,10 @@ ifeq ($(CONFIG_AM263X_MDIO),y)
 CSRCS += am263x_ethernet.c
 endif
 
+ifneq ($(CONFIG_AM263X_ADC1)$(CONFIG_AM263X_EPWM),)
+CSRCS += am263x_analog.c
+endif
+
 ifeq ($(CONFIG_BOARDCTL),y)
 CSRCS += am263x_appinit.c
 endif

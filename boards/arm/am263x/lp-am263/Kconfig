@@ -37,4 +37,13 @@ config LP_AM263_BOOSTERPACK1_SPI
 		and the PRU0 second-PHY mux (U49) off, and GPIO63 low, so U51
 		passes SPI0 rather than the PRU0 GPIOs.
 
+config LP_AM263_ADC1_EPWM0
+	bool "ADC1 scans on EPWM0 SOCA"
+	default n
+	depends on AM263X_ADC1 && AM263X_EPWM
+	---help---
+		/dev/adc0 (ADC1, AIN0-5) converts once per EPWM0 period, at the
+		end of the period, while /dev/pwm0 runs, instead of on
+		ANIOC_TRIGGER.  EPWM0's outputs are not routed to any pin.
+
 endif # ARCH_BOARD_LP_AM263
