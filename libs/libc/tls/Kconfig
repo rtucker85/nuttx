@@ -127,4 +127,9 @@ config TLS_NCLEANUP
 		exist and a program that calls them does not link.  Each level
 		costs two pointers in every thread.
 
+		poll() also takes a level while it waits, to release the files
+		it holds if its thread is cancelled or killed by a signal.  With
+		0, a thread killed in poll() leaves those files open, and their
+		drivers keep its poll structures after its stack is freed.
+
 endmenu # Thread Local Storage (TLS)
