@@ -51,4 +51,16 @@ if(CONFIG_AM263X_MDIO)
   list(APPEND SRCS am263x_mdio.c)
 endif()
 
+if(CONFIG_AM263X_CONTROLSS)
+  list(APPEND SRCS am263x_controlss.c)
+endif()
+
+if(CONFIG_AM263X_ADC)
+  list(APPEND SRCS am263x_adc.c)
+endif()
+
+if(CONFIG_AM263X_EPWM)
+  list(APPEND SRCS am263x_pwm.c)
+endif()
+
 target_sources(arch PRIVATE ${SRCS})
