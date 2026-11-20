@@ -112,6 +112,9 @@ config ARCH_CHIP_AM263X
 	select ARCH_HAVE_LOWVECTORS
 	select ARCH_HAVE_IRQTRIGGER
 	select ARCH_HAVE_RESET
+	select ONESHOT
+	select ONESHOT_COUNT
+	select ALARM_ARCH
 	---help---
 		TI AM263x family (AM2631, AM2632, AM2634): up to four Cortex-R5F
 		cores with a double-precision FPU, little-endian.

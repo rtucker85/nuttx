@@ -36,6 +36,8 @@
 #define RTI_CPUC0_OFFSET            0x18  /* Compare up-counter 0 */
 #define RTI_COMP0_OFFSET            0x50  /* Compare 0 */
 #define RTI_UDCP0_OFFSET            0x54  /* Update compare 0 */
+#define RTI_COMP1_OFFSET            0x58  /* Compare 1 */
+#define RTI_UDCP1_OFFSET            0x5c  /* Update compare 1 */
 #define RTI_SETINT_OFFSET           0x80  /* Set interrupt enable */
 #define RTI_CLEARINT_OFFSET         0x84  /* Clear interrupt enable */
 #define RTI_INTFLAG_OFFSET          0x88  /* Interrupt flags, write 1 clears */
