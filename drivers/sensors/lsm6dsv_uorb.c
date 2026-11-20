@@ -80,6 +80,7 @@
 #define LSM6DSV_FIFO_DATA_TAG   0x78
 
 #define LSM6DSV_ID              0x70
+#define LSM6DSV320X_ID          0x73  /* Same core, plus a high-g accel */
 
 /* IF_CFG */
 
@@ -162,6 +163,7 @@ struct lsm6dsv_dev_s
   mutex_t                   lock;      /* Settings and enable state */
   sem_t                     run;       /* Wakes the thread */
   bool                      overrun;   /* FIFO overrun already reported */
+  uint8_t                   id;        /* WHO_AM_I */
   uint8_t                   words[LSM6DSV_FIFO_WORDS][LSM6DSV_WORD_SIZE];
 };
 
@@ -359,6 +361,14 @@ static int lsm6dsv_setfs(FAR struct lsm6dsv_sensor_s *sensor,
     {
       table = g_gyro_fs;
       count = nitems(g_gyro_fs);
+
+      /* The LSM6DSV320X's FS_G is three bits: no 4000 dps setting */
+
+      if (priv->id == LSM6DSV320X_ID)
+        {
+          count--;
+        }
+
       unit  = (float)M_PI / 180.0f;     /* dps to rad/s */
     }
 
@@ -467,7 +477,8 @@ static int lsm6dsv_get_info(FAR struct sensor_lowerhalf_s *lower,
   info->resolution = sensor->scale;
   info->min_delay  = LSM6DSV_ODR_PERIOD(LSM6DSV_ODR_LAST);
   info->max_delay  = LSM6DSV_ODR_PERIOD(LSM6DSV_ODR_FIRST);
-  strlcpy(info->name, "LSM6DSV", sizeof(info->name));
+  strlcpy(info->name, sensor->dev->id == LSM6DSV320X_ID ?
+          "LSM6DSV320X" : "LSM6DSV", sizeof(info->name));
   strlcpy(info->vendor, "STMicroelectronics", sizeof(info->vendor));
   return OK;
 }
@@ -684,11 +695,14 @@ static int lsm6dsv_init(FAR struct lsm6dsv_dev_s *priv)
   int i;
 
   id = lsm6dsv_getreg(priv, LSM6DSV_WHO_AM_I);
-  if (id != LSM6DSV_ID)
+  if (id != LSM6DSV_ID && id != LSM6DSV320X_ID)
     {
-      snerr("ERROR: WHO_AM_I %02x, expected %02x\n", id, LSM6DSV_ID);
+      snerr("ERROR: WHO_AM_I %02x, expected %02x or %02x\n", id,
+            LSM6DSV_ID, LSM6DSV320X_ID);
       return -ENODEV;
     }
+
+  priv->id = id;
 
   lsm6dsv_putreg(priv, LSM6DSV_CTRL3, CTRL3_SW_RESET);
   for (i = 0; (lsm6dsv_getreg(priv, LSM6DSV_CTRL3) & CTRL3_SW_RESET) != 0;
