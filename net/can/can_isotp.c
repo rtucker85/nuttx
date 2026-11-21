@@ -78,7 +78,8 @@
                                 CAN_ISOTP_CHK_PAD_DATA | CAN_ISOTP_EXTEND_ADDR | \
                                 CAN_ISOTP_RX_EXT_ADDR | CAN_ISOTP_LISTEN_MODE | \
                                 CAN_ISOTP_HALF_DUPLEX | CAN_ISOTP_FORCE_TXSTMIN | \
-                                CAN_ISOTP_FORCE_RXSTMIN)
+                                CAN_ISOTP_FORCE_RXSTMIN | ISOTP_BC_FLAGS)
+#define ISOTP_BC_FLAGS         (CAN_ISOTP_SF_BROADCAST | CAN_ISOTP_CF_BROADCAST)
 #define ISOTP_CANID_MASK       (CAN_EFF_FLAG | CAN_EFF_MASK)
 
 /****************************************************************************
@@ -262,6 +263,21 @@ static inline_function bool isotp_listen_mode(FAR struct isotp_conn_s *isotp)
 }
 
 /****************************************************************************
+ * Name: isotp_bc_flags
+ *
+ * Description:
+ *   CAN_ISOTP_SF_BROADCAST or CAN_ISOTP_CF_BROADCAST (functional
+ *   addressing): the socket only sends, and needs no RX ID.
+ *
+ ****************************************************************************/
+
+static inline_function uint32_t
+isotp_bc_flags(FAR struct isotp_conn_s *isotp)
+{
+  return isotp->opt.flags & ISOTP_BC_FLAGS;
+}
+
+/****************************************************************************
  * Name: isotp_rx_ext_address
  *
  * Description:
@@ -397,7 +413,8 @@ static inline_function bool isotp_rx_match(FAR struct isotp_conn_s *isotp,
   canid_t canid;
   uint8_t ae = isotp_ae(isotp);
 
-  if (isotp_get_frame_info(iob, &canid, data_out, dlen_out) < 0 ||
+  if (isotp_bc_flags(isotp) != 0 ||
+      isotp_get_frame_info(iob, &canid, data_out, dlen_out) < 0 ||
       canid != (isotp->rx_id & ISOTP_CANID_MASK) || *dlen_out < ae)
     {
       return false;
@@ -1098,7 +1115,17 @@ static uint32_t isotp_tx_eventhandler(FAR struct net_driver_s *dev,
   isotp_send_iob(dev, iob);
   isotp->tx_last_send = clock_systime_ticks();
 
-  if (pci == ISOTP_PCI_TYPE_FF)
+  if (pci == ISOTP_PCI_TYPE_FF &&
+      (isotp->opt.flags & CAN_ISOTP_CF_BROADCAST) != 0)
+    {
+      /* No flow control in CF broadcast: send all CFs, paced only by
+       * frame_txtime or the forced STmin.
+       */
+
+      isotp->tx_bs_remaining = 0;
+      isotp->tx_stmin_us     = isotp_tx_gap_us(isotp, 0);
+    }
+  else if (pci == ISOTP_PCI_TYPE_FF)
     {
       /* First frame sent: wait for the receiver's flow control. */
 
@@ -1192,6 +1219,16 @@ static int isotp_tx_prepare(FAR struct isotp_conn_s *isotp,
   if (ret < 0)
     {
       return ret;
+    }
+
+  /* SF broadcast: the message must fit one single frame. */
+
+  if ((isotp->opt.flags & CAN_ISOTP_SF_BROADCAST) != 0 &&
+      len > (isotp->ll.tx_dl > CAN_MAX_DLEN ?
+             isotp->ll.tx_dl - ISOTP_ESF_HDR_LEN : CAN_MAX_DLEN - 1) -
+            isotp_ae(isotp))
+    {
+      return -EINVAL;
     }
 
   isotp->tx_buf = kmm_malloc(len);
@@ -1508,9 +1545,12 @@ static int isotp_bind(FAR struct socket *psock,
       return -EINVAL;
     }
 
+  /* A broadcast socket does not receive, so its RX ID is not checked. */
+
   canaddr = (FAR struct sockaddr_can *)addr;
   if (canaddr->can_ifindex <= 0 ||
-      (canaddr->can_addr.tp.rx_id & (CAN_RTR_FLAG | CAN_ERR_FLAG)) != 0 ||
+      (isotp_bc_flags(conn) == 0 &&
+       (canaddr->can_addr.tp.rx_id & (CAN_RTR_FLAG | CAN_ERR_FLAG)) != 0) ||
       (canaddr->can_addr.tp.tx_id & (CAN_RTR_FLAG | CAN_ERR_FLAG)) != 0)
     {
       return -EINVAL;
@@ -2201,7 +2241,8 @@ static int isotp_setsockopt(FAR struct socket *psock, int level,
               return -EINVAL;
             }
 
-          if ((opt->flags & ~ISOTP_OPTS_FLAGS) != 0)
+          if ((opt->flags & ~ISOTP_OPTS_FLAGS) != 0 ||
+              (opt->flags & ISOTP_BC_FLAGS) == ISOTP_BC_FLAGS)
             {
               return -EINVAL;
             }

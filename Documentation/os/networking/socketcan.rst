@@ -238,3 +238,10 @@ after the last one taken. ``frame_txtime`` in ``CAN_ISOTP_OPTS`` is added
 between consecutive frames. It starts at 0 rather than Linux's 50 us,
 because frames go to the CAN controller's queue and the bus paces them; 0
 keeps the current value and ``CAN_ISOTP_FRAME_TXTIME_ZERO`` sets 0.
+
+For functional addressing, a ``CAN_ISOTP_SF_BROADCAST`` socket sends single
+frames only (``send`` of a longer message fails with ``EINVAL``) and a
+``CAN_ISOTP_CF_BROADCAST`` socket sends every frame of a message without
+waiting for flow control, paced by ``frame_txtime`` or the forced STmin.
+Both only send: ``bind`` does not check their RX ID, and they receive
+nothing. They cannot be set together.
