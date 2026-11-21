@@ -43,6 +43,7 @@
 #include <assert.h>
 #include <debug.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -91,6 +92,7 @@ struct am263x_adc_s
   uint8_t   trigger;                      /* ADC_TRIGSEL_* */
   uint8_t   nchannels;
   uint8_t   channels[AM263X_ADC_NSOC];
+  uint32_t  overruns;                     /* Scans lost since setup() */
 };
 
 /****************************************************************************
@@ -313,6 +315,7 @@ static int adc_setup(FAR struct adc_dev_s *dev)
       putreg32(soc, priv->base + AM263X_ADC_SOCCTL(i));
     }
 
+  priv->overruns = 0;
   adc_putreg(priv, AM263X_ADC_SOCOVFCLR1, 0xffff);
   adc_putreg(priv, AM263X_ADC_INTOVFCLR, ADC_INT(1));
   adc_putreg(priv, AM263X_ADC_INTFLGCLR, ADC_INT(1));
@@ -369,6 +372,12 @@ static void adc_shutdown(FAR struct adc_dev_s *dev)
 
   am263x_css_ctrl_modify(AM263X_CSS_CTRL_ADC_CLK_GATE(priv->adc),
                          0, CSS_CTRL_CLK_GATED);
+
+  if (priv->overruns > 0)
+    {
+      awarn("WARNING: ADC%d lost %" PRIu32 " scans\n", priv->adc,
+            priv->overruns);
+    }
 }
 
 /****************************************************************************
@@ -422,7 +431,8 @@ static int adc_ioctl(FAR struct adc_dev_s *dev, int cmd, unsigned long arg)
  * Description:
  *   End of scan: hand every result to the upper half.  If another scan
  *   finished before this one was handled (ADCINT1 overflow), its results
- *   have overwritten this one's; they are passed on all the same.
+ *   have overwritten this one's; they are passed on all the same, and
+ *   the lost scan is counted (reported at shutdown, not from here).
  *
  ****************************************************************************/
 
@@ -449,7 +459,7 @@ static int adc_interrupt(int irq, FAR void *context, FAR void *arg)
   if ((adc_getreg(priv, AM263X_ADC_INTOVF) & ADC_INT(1)) != 0)
     {
       adc_putreg(priv, AM263X_ADC_INTOVFCLR, ADC_INT(1));
-      awarn("WARNING: ADC%d scan overrun\n", priv->adc);
+      priv->overruns++;
     }
 
   adc_putreg(priv, AM263X_ADC_INTFLGCLR, ADC_INT(1));
