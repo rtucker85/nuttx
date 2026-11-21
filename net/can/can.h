@@ -94,7 +94,7 @@ struct can_conn_s
 
   struct iob_queue_s readahead;      /* remove Read-ahead buffering */
 
-#if CONFIG_NET_RECV_BUFSIZE > 0
+#if CONFIG_NET_CAN_RECV_BUFSIZE > 0
   int32_t  rcvbufs;                  /* Maximum amount of bytes queued in receive */
 #endif
 
