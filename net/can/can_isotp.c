@@ -106,7 +106,7 @@ struct isotp_conn_s
   struct can_isotp_options     opt;             /* ISO-TP socket options */
   struct can_isotp_ll_options  ll;              /* Link-layer options */
   uint8_t                      tx_bs_remaining; /* CFs left in block (0=inf) */
-  uint8_t                      tx_stmin_ms;     /* STmin from last FC (ms) */
+  uint32_t                     tx_stmin_us;     /* STmin from last FC (us) */
   int                          tx_result;       /* Outcome for WAIT_TX_DONE */
   enum isotp_tx_state_e        tx_state;        /* TX progress */
   clock_t                      tx_last_send;    /* Tick of last CF (STmin) */
@@ -159,6 +159,7 @@ static int isotp_setsockopt(FAR struct socket *psock, int level, int option,
 #endif
 
 static void isotp_tx_finish(FAR struct isotp_conn_s *isotp, int result);
+static void isotp_tx_wait_fc(FAR struct isotp_conn_s *isotp);
 
 /****************************************************************************
  * Private Data
@@ -375,11 +376,36 @@ static inline_function bool isotp_rx_need_recover(int ret)
 }
 
 /****************************************************************************
+ * Name: isotp_stmin_us
+ *
+ * Description:
+ *   Convert an STmin byte to microseconds (ISO 15765-2): 0x00-0x7f are
+ *   milliseconds, 0xf1-0xf9 are 100-900 us, and a reserved value means the
+ *   longest STmin, 127 ms.
+ *
+ ****************************************************************************/
+
+static inline_function uint32_t isotp_stmin_us(uint8_t stmin)
+{
+  if (stmin <= 0x7f)
+    {
+      return stmin * USEC_PER_MSEC;
+    }
+
+  if (stmin >= 0xf1 && stmin <= 0xf9)
+    {
+      return (stmin - 0xf0) * 100;
+    }
+
+  return 0x7f * USEC_PER_MSEC;
+}
+
+/****************************************************************************
  * Name: isotp_rx_input_fc
  *
  * Description:
- *   Consume a flow-control frame: advance a waiting transfer or drop a
- *   stray FC.  Net locked.
+ *   Consume a flow-control frame: advance, hold or end a waiting transfer,
+ *   or drop a stray FC.  Net locked.
  *
  ****************************************************************************/
 
@@ -393,21 +419,38 @@ isotp_rx_input_fc(FAR struct isotp_conn_s *isotp,
 
   if (isotp->tx_state == ISOTP_TX_WAIT_FC)
     {
-      if (dlen >= ISOTP_FC_LEN &&
-          (data[0] & ISOTP_FC_FS_MASK) == ISOTP_FC_CTS)
+      if (dlen < ISOTP_FC_LEN)
         {
-          isotp->tx_bs_remaining = data[1];
-          isotp->tx_stmin_ms     = data[2];
-          isotp->tx_last_send    = clock_systime_ticks();
-          isotp->tx_state        = ISOTP_TX_SENDING;
-          wd_cancel(&isotp->tx_wdog);
-          kick = true;
+          isotp_tx_finish(isotp, -EBADMSG);
         }
       else
         {
-          /* WAIT/OVFLW/invalid flow control: abort the transfer. */
+          switch (data[0] & ISOTP_FC_FS_MASK)
+            {
+              case ISOTP_FC_CTS:
+                isotp->tx_bs_remaining = data[1];
+                isotp->tx_stmin_us     = isotp_stmin_us(data[2]);
+                isotp->tx_last_send    = clock_systime_ticks();
+                isotp->tx_state        = ISOTP_TX_SENDING;
+                wd_cancel(&isotp->tx_wdog);
+                kick = true;
+                break;
 
-          isotp_tx_finish(isotp, -EPROTO);
+              case ISOTP_FC_WAIT:
+
+                /* Keep waiting: N_Bs starts again. */
+
+                isotp_tx_wait_fc(isotp);
+                break;
+
+              case ISOTP_FC_OVFLW:
+                isotp_tx_finish(isotp, -EMSGSIZE);
+                break;
+
+              default:
+                isotp_tx_finish(isotp, -EBADMSG);
+                break;
+            }
         }
     }
 
@@ -651,7 +694,7 @@ static void isotp_tx_nbs_timeout(wdparm_t arg)
  *
  ****************************************************************************/
 
-static inline_function void isotp_tx_wait_fc(FAR struct isotp_conn_s *isotp)
+static void isotp_tx_wait_fc(FAR struct isotp_conn_s *isotp)
 {
   isotp->tx_state = ISOTP_TX_WAIT_FC;
   wd_start(&isotp->tx_wdog, MSEC2TICK(ISOTP_FC_WAIT_MS),
@@ -670,7 +713,7 @@ static inline_function void isotp_tx_wait_fc(FAR struct isotp_conn_s *isotp)
 static inline_function clock_t
 isotp_tx_stmin_ticks(FAR struct isotp_conn_s *isotp)
 {
-  clock_t ticks = MSEC2TICK(isotp->tx_stmin_ms);
+  clock_t ticks = USEC2TICK(isotp->tx_stmin_us);
 
   return ticks < 1 ? 1 : ticks;
 }
@@ -697,7 +740,7 @@ isotp_tx_finish(FAR struct isotp_conn_s *isotp, int result)
   isotp->tx_result       = result;
   isotp->tx_state        = ISOTP_TX_IDLE;
   isotp->tx_bs_remaining = 0;
-  isotp->tx_stmin_ms     = 0;
+  isotp->tx_stmin_us     = 0;
 
   iob_free_queue(&isotp->tx_q);
 
@@ -802,7 +845,7 @@ static uint32_t isotp_tx_eventhandler(FAR struct net_driver_s *dev,
    * never defers.
    */
 
-  if (pci == ISOTP_PCI_TYPE_CF && isotp->tx_stmin_ms > 0)
+  if (pci == ISOTP_PCI_TYPE_CF && isotp->tx_stmin_us > 0)
     {
       clock_t need    = isotp_tx_stmin_ticks(isotp);
       clock_t elapsed = (clock_t)(clock_systime_ticks() -
@@ -1901,15 +1944,6 @@ static int isotp_setsockopt(FAR struct socket *psock, int level,
           FAR const struct can_isotp_fc_options *fc = value;
 
           if (value_len < sizeof(*fc))
-            {
-              return -EINVAL;
-            }
-
-          /* STmin is interpreted by the sender as milliseconds (0..127);
-           * the microsecond range (0xf1..0xf9) is not honored here.
-           */
-
-          if (fc->stmin > 0x7f || fc->wftmax != 0)
             {
               return -EINVAL;
             }
