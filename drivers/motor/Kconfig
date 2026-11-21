@@ -80,6 +80,39 @@ config MOTOR_UPPER_HAVE_INPUT_POWER
 
 endif
 
+config MOTOR_DRV8145
+	bool "TI DRV8145-Q1 half-bridge drivers (SPI daisy chain)"
+	default n
+	depends on SPI
+	---help---
+		A daisy chain of TI DRV8145-Q1 half-bridge drivers (or the
+		DRV8143 and DRV8144, which share its register map) on one SPI
+		chip select, as /dev/hbN: configuration, output control through
+		SPI_IN and the board's IN and DRVOFF pins, status and fault
+		clearing, off-state diagnostics, and set-up again after a
+		power-on reset.
+
+if MOTOR_DRV8145
+
+config MOTOR_DRV8145_FREQUENCY
+	int "SPI frequency (Hz)"
+	default 5000000
+	range 100000 10000000
+	---help---
+		SCLK for the chain; the device allows up to 10 MHz.
+
+config MOTOR_DRV8145_OLP_SETTLE_US
+	int "Off-state diagnostics settling time (us)"
+	default 1000
+	range 10 100000
+	---help---
+		How long the output is left to settle with each OLP pull-up or
+		pull-down before the comparator is read.  The internal resistors
+		are 1 kohm, so this depends mostly on the capacitance on the
+		output.
+
+endif # MOTOR_DRV8145
+
 source "drivers/motor/foc/Kconfig"
 
 endif # MOTOR

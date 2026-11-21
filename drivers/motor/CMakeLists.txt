@@ -28,6 +28,10 @@ if(CONFIG_MOTOR_UPPER)
   target_sources(drivers PRIVATE motor.c)
 endif()
 
+if(CONFIG_MOTOR_DRV8145)
+  target_sources(drivers PRIVATE drv8145.c)
+endif()
+
 if(CONFIG_STEPPER_UPPER)
   target_sources(drivers PRIVATE stepper.c)
 endif()
