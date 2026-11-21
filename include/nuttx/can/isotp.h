@@ -155,10 +155,10 @@
 /* struct can_isotp_options - ISO-TP socket options
  * flags:          ISO-TP behavior flags.
  * frame_txtime:   Frame transmission time (not used yet).
- * ext_address:    Extended address (not used yet).
+ * ext_address:    Extended address (CAN_ISOTP_EXTEND_ADDR).
  * txpad_content:  TX padding content (CAN_ISOTP_TX_PADDING).
  * rxpad_content:  RX padding content (CAN_ISOTP_CHK_PAD_DATA).
- * rx_ext_address: RX extended address (not used yet).
+ * rx_ext_address: RX extended address (CAN_ISOTP_RX_EXT_ADDR).
  */
 
 struct can_isotp_options
@@ -224,6 +224,7 @@ struct isotp_encode_s
   isotp_len_t        len;  /* Total message length */
   isotp_len_t        done; /* Bytes encoded so far */
   uint8_t            sn;   /* Next consecutive frame sequence number */
+  uint8_t            ae;   /* Address bytes before the PCI (0 or 1) */
 };
 
 /* RX decode context */
@@ -257,9 +258,9 @@ extern "C"
  *
  * Input Parameters:
  *   ctx   - ISO-TP encode context
- *   frame - ISO-TP data
- *   dlen  - in: CAN data field size (CAN_MAX_DLEN=8 or CANFD_MAX_DLEN=64),
- *           out: actual encoded frame length.
+ *   frame - ISO-TP data, after the ctx->ae address bytes
+ *   dlen  - in: CAN data field size (CAN_MAX_DLEN=8 or CANFD_MAX_DLEN=64)
+ *           less ctx->ae, out: actual encoded frame length.
  *
  * Returned Value:
  *   > 0 when more frames follow, 0 when encoding is complete
@@ -351,6 +352,7 @@ static inline int isotp_encode_init(FAR struct isotp_encode_s *ctx,
   ctx->len  = len;
   ctx->done = 0;
   ctx->sn   = 1;
+  ctx->ae   = 0;
   return 0;
 }
 

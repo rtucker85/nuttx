@@ -219,3 +219,8 @@ or for frames no longer than needed without it, and
 ``rxpad_content``. A message that fails the check is dropped and ``recv``
 returns ``EBADMSG``; a flow control that fails it ends the transfer with
 ``EBADMSG``.
+
+``CAN_ISOTP_EXTEND_ADDR`` selects extended (or mixed) addressing: every frame
+sent starts with ``ext_address``, and only frames that start with
+``rx_ext_address`` (with ``CAN_ISOTP_RX_EXT_ADDR``) or else ``ext_address``
+are received. The address byte leaves one byte less for data in each frame.
