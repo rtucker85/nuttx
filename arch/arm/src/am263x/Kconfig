@@ -198,6 +198,7 @@ config AM263X_MCAN
 	select NET_CAN_HAVE_CANFD
 	select NET_CAN_HAVE_ERRORS
 	select MM_IOB
+	select SCHED_LPWORK
 
 config AM263X_MCAN0
 	bool "MCAN0"
