@@ -200,3 +200,11 @@ Segmentation, flow control, and reassembly are handled transparently by the
 kernel. TX waits up to 15000 ms for a Flow Control frame after a First Frame
 (N_Bs); RX waits up to 1000 ms for Consecutive Frames after a First Frame
 (N_Cr).
+
+The sender honors every Flow Control the receiver may send. STmin values
+0x00-0x7F are milliseconds and 0xF1-0xF9 are 100-900 us; a reserved value
+counts as 127 ms. A WAIT status starts the N_Bs wait again. An overflow
+status ends the transfer with ``EMSGSIZE``, and a reserved status or a Flow
+Control shorter than 3 bytes with ``EBADMSG``; ``send`` returns the error
+with ``CAN_ISOTP_WAIT_TX_DONE``. This receiver never sends WAIT, so
+``wftmax`` in ``CAN_ISOTP_RECV_FC`` is accepted and not used.

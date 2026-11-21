@@ -190,8 +190,10 @@ struct can_isotp_ll_options
  *         before waiting for the next FC.  0 means send the whole message
  *         without further flow control (fastest).
  * stmin:  Minimum separation time the sender must leave between consecutive
- *         frames, in milliseconds (0..127).  0 means no delay (fastest).
- * wftmax: Maximum number of FC.WAIT frames (reserved; not used yet).
+ *         frames: 0x00-0x7f in milliseconds, 0xf1-0xf9 in 100 us steps
+ *         (ISO 15765-2).  0 means no delay (fastest).
+ * wftmax: Maximum number of FC.WAIT frames in a row.  This receiver never
+ *         sends FC.WAIT, so the value is not used.
  */
 
 struct can_isotp_fc_options
