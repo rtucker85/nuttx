@@ -79,7 +79,8 @@
                                 CAN_ISOTP_RX_PADDING | CAN_ISOTP_CHK_PAD_LEN | \
                                 CAN_ISOTP_CHK_PAD_DATA | CAN_ISOTP_EXTEND_ADDR | \
                                 CAN_ISOTP_RX_EXT_ADDR | CAN_ISOTP_LISTEN_MODE | \
-                                CAN_ISOTP_HALF_DUPLEX)
+                                CAN_ISOTP_HALF_DUPLEX | CAN_ISOTP_FORCE_TXSTMIN | \
+                                CAN_ISOTP_FORCE_RXSTMIN)
 #define ISOTP_CANID_MASK       (CAN_EFF_FLAG | CAN_EFF_MASK)
 
 /****************************************************************************
@@ -112,7 +113,9 @@ struct isotp_conn_s
   struct can_isotp_options     opt;             /* ISO-TP socket options */
   struct can_isotp_ll_options  ll;              /* Link-layer options */
   uint8_t                      tx_bs_remaining; /* CFs left in block (0=inf) */
-  uint32_t                     tx_stmin_us;     /* STmin from last FC (us) */
+  uint32_t                     tx_stmin_us;     /* CF gap: STmin + N_As (us) */
+  uint32_t                     tx_frame_ns;     /* N_As, frame_txtime (ns) */
+  uint32_t                     tx_force_ns;     /* CAN_ISOTP_TX_STMIN (ns) */
   int                          tx_result;       /* Outcome for WAIT_TX_DONE */
   enum isotp_tx_state_e        tx_state;        /* TX progress */
   clock_t                      tx_last_send;    /* Tick of last CF (STmin) */
@@ -133,6 +136,9 @@ struct isotp_conn_s
   uint8_t                      rx_block;        /* CFs since the last FC */
   bool                         rx_active;       /* Multi-frame RX running */
   bool                         rx_fc_pending;   /* CTS FC awaiting TX slot */
+  bool                         rx_cf_seen;      /* A CF since the FF */
+  clock_t                      rx_last_cf;      /* Tick of last CF taken */
+  uint32_t                     rx_force_ns;     /* CAN_ISOTP_RX_STMIN (ns) */
   mutex_t                      rx_lock;         /* Serialize concurrent receivers */
 };
 
@@ -562,6 +568,32 @@ static inline_function uint32_t isotp_stmin_us(uint8_t stmin)
 }
 
 /****************************************************************************
+ * Name: isotp_tx_gap_us
+ *
+ * Description:
+ *   The time to leave between consecutive frames: frame_txtime (N_As) plus
+ *   the receiver's STmin, or the forced one with CAN_ISOTP_FORCE_TXSTMIN.
+ *
+ ****************************************************************************/
+
+static inline_function uint32_t
+isotp_tx_gap_us(FAR struct isotp_conn_s *isotp, uint8_t stmin)
+{
+  uint64_t ns = isotp->tx_frame_ns;
+
+  if ((isotp->opt.flags & CAN_ISOTP_FORCE_TXSTMIN) != 0)
+    {
+      ns += isotp->tx_force_ns;
+    }
+  else
+    {
+      ns += (uint64_t)isotp_stmin_us(stmin) * NSEC_PER_USEC;
+    }
+
+  return div_const_roundup(ns, NSEC_PER_USEC);
+}
+
+/****************************************************************************
  * Name: isotp_rx_input_fc
  *
  * Description:
@@ -591,7 +623,7 @@ isotp_rx_input_fc(FAR struct isotp_conn_s *isotp,
             {
               case ISOTP_FC_CTS:
                 isotp->tx_bs_remaining = data[1];
-                isotp->tx_stmin_us     = isotp_stmin_us(data[2]);
+                isotp->tx_stmin_us     = isotp_tx_gap_us(isotp, data[2]);
                 isotp->tx_last_send    = clock_systime_ticks();
                 isotp->tx_state        = ISOTP_TX_SENDING;
                 wd_cancel(&isotp->tx_wdog);
@@ -709,6 +741,7 @@ isotp_rx_input_ff(FAR struct isotp_conn_s *isotp,
   isotp->rx_done       = done;
   isotp->rx_sn         = 1;
   isotp->rx_block      = 0;
+  isotp->rx_cf_seen    = false;
   isotp->rx_active     = true;
   isotp->rx_fc_pending = !isotp_listen_mode(isotp);
 }
@@ -729,6 +762,25 @@ isotp_rx_input_cf(FAR struct isotp_conn_s *isotp,
   if (!isotp->rx_active)
     {
       return false;
+    }
+
+  /* CAN_ISOTP_FORCE_RXSTMIN: drop a CF that comes too soon after the last
+   * one taken.
+   */
+
+  if ((isotp->opt.flags & CAN_ISOTP_FORCE_RXSTMIN) != 0)
+    {
+      clock_t now = clock_systime_ticks();
+
+      if (isotp->rx_cf_seen &&
+          (clock_t)(now - isotp->rx_last_cf) <
+          USEC2TICK(div_const_roundup(isotp->rx_force_ns, NSEC_PER_USEC)))
+        {
+          return false;
+        }
+
+      isotp->rx_cf_seen = true;
+      isotp->rx_last_cf = now;
     }
 
   if ((data[0] & ISOTP_CF_SN_MASK) != isotp->rx_sn)
@@ -2090,6 +2142,20 @@ static int isotp_getsockopt(FAR struct socket *psock, int level,
           return OK;
         }
 
+      case CAN_ISOTP_TX_STMIN:
+      case CAN_ISOTP_RX_STMIN:
+        {
+          if (*value_len < sizeof(uint32_t))
+            {
+              return -EINVAL;
+            }
+
+          *(FAR uint32_t *)value = option == CAN_ISOTP_TX_STMIN ?
+                                   conn->tx_force_ns : conn->rx_force_ns;
+          *value_len = sizeof(uint32_t);
+          return OK;
+        }
+
       case CAN_ISOTP_RECV_FC:
         {
           if (*value_len < sizeof(conn->rx_fc))
@@ -2133,13 +2199,45 @@ static int isotp_setsockopt(FAR struct socket *psock, int level,
               return -EINVAL;
             }
 
-          if ((opt->flags & ~ISOTP_OPTS_FLAGS) != 0 ||
-              opt->frame_txtime != 0)
+          if ((opt->flags & ~ISOTP_OPTS_FLAGS) != 0)
             {
               return -EINVAL;
             }
 
+          /* frame_txtime: 0 keeps the current value, FRAME_TXTIME_ZERO
+           * sets 0.
+           */
+
+          if (opt->frame_txtime == CAN_ISOTP_FRAME_TXTIME_ZERO)
+            {
+              conn->tx_frame_ns = 0;
+            }
+          else if (opt->frame_txtime != 0)
+            {
+              conn->tx_frame_ns = opt->frame_txtime;
+            }
+
           conn->opt = *opt;
+          return OK;
+        }
+
+      case CAN_ISOTP_TX_STMIN:
+      case CAN_ISOTP_RX_STMIN:
+        {
+          if (value_len < sizeof(uint32_t))
+            {
+              return -EINVAL;
+            }
+
+          if (option == CAN_ISOTP_TX_STMIN)
+            {
+              conn->tx_force_ns = *(FAR const uint32_t *)value;
+            }
+          else
+            {
+              conn->rx_force_ns = *(FAR const uint32_t *)value;
+            }
+
           return OK;
         }
 

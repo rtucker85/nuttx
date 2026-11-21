@@ -154,7 +154,9 @@
 
 /* struct can_isotp_options - ISO-TP socket options
  * flags:          ISO-TP behavior flags.
- * frame_txtime:   Frame transmission time (not used yet).
+ * frame_txtime:   Time to add between consecutive frames (N_As, ns).
+ *                 0 keeps the current value (initially 0),
+ *                 CAN_ISOTP_FRAME_TXTIME_ZERO sets 0.
  * ext_address:    Extended address (CAN_ISOTP_EXTEND_ADDR).
  * txpad_content:  TX padding content (CAN_ISOTP_TX_PADDING).
  * rxpad_content:  RX padding content (CAN_ISOTP_CHK_PAD_DATA).
