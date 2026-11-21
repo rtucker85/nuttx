@@ -77,7 +77,8 @@
 #define ISOTP_RX_STMIN_MS      1
 #define ISOTP_OPTS_FLAGS       (CAN_ISOTP_WAIT_TX_DONE | CAN_ISOTP_TX_PADDING | \
                                 CAN_ISOTP_RX_PADDING | CAN_ISOTP_CHK_PAD_LEN | \
-                                CAN_ISOTP_CHK_PAD_DATA)
+                                CAN_ISOTP_CHK_PAD_DATA | CAN_ISOTP_EXTEND_ADDR | \
+                                CAN_ISOTP_RX_EXT_ADDR)
 #define ISOTP_CANID_MASK       (CAN_EFF_FLAG | CAN_EFF_MASK)
 
 /****************************************************************************
@@ -230,6 +231,34 @@ isotp_conn(FAR struct socket *psock)
 }
 
 /****************************************************************************
+ * Name: isotp_ae
+ *
+ * Description:
+ *   Address bytes before the PCI: 1 with extended addressing, else 0.
+ *
+ ****************************************************************************/
+
+static inline_function uint8_t isotp_ae(FAR struct isotp_conn_s *isotp)
+{
+  return (isotp->opt.flags & CAN_ISOTP_EXTEND_ADDR) != 0;
+}
+
+/****************************************************************************
+ * Name: isotp_rx_ext_address
+ *
+ * Description:
+ *   The address received frames must carry with extended addressing.
+ *
+ ****************************************************************************/
+
+static inline_function uint8_t
+isotp_rx_ext_address(FAR struct isotp_conn_s *isotp)
+{
+  return (isotp->opt.flags & CAN_ISOTP_RX_EXT_ADDR) != 0 ?
+         isotp->opt.rx_ext_address : isotp->opt.ext_address;
+}
+
+/****************************************************************************
  * Name: isotp_get_frame_info
  *
  * Description:
@@ -335,8 +364,9 @@ isotp_notify_pollout(FAR struct isotp_conn_s *isotp)
  * Name: isotp_rx_match
  *
  * Description:
- *   Decode a frame and report whether its CAN ID matches this socket's RX
- *   ID.  The payload pointer and length are returned for the caller's own
+ *   Decode a frame and report whether its CAN ID, and with extended
+ *   addressing its first byte, match this socket.  The payload pointer and
+ *   length, after any address byte, are returned for the caller's own
  *   PCI/length checks.
  *
  ****************************************************************************/
@@ -347,9 +377,26 @@ static inline_function bool isotp_rx_match(FAR struct isotp_conn_s *isotp,
                                            FAR uint8_t *dlen_out)
 {
   canid_t canid;
+  uint8_t ae = isotp_ae(isotp);
 
-  return isotp_get_frame_info(iob, &canid, data_out, dlen_out) == OK &&
-         canid == (isotp->rx_id & ISOTP_CANID_MASK);
+  if (isotp_get_frame_info(iob, &canid, data_out, dlen_out) < 0 ||
+      canid != (isotp->rx_id & ISOTP_CANID_MASK) || *dlen_out < ae)
+    {
+      return false;
+    }
+
+  if (ae != 0)
+    {
+      if ((*data_out)[0] != isotp_rx_ext_address(isotp))
+        {
+          return false;
+        }
+
+      (*data_out)++;
+      (*dlen_out)--;
+    }
+
+  return true;
 }
 
 /****************************************************************************
@@ -429,9 +476,10 @@ static inline_function uint8_t isotp_tx_pad(FAR struct isotp_conn_s *isotp,
  * Name: isotp_rx_pad_ok
  *
  * Description:
- *   Check the padding of a received frame of len bytes whose padding
- *   starts at data[start] (CAN_ISOTP_CHK_PAD_LEN, CAN_ISOTP_CHK_PAD_DATA).
- *   Without CAN_ISOTP_RX_PADDING, CHK_PAD_LEN asks for the shortest frame.
+ *   Check the padding of a received frame whose padding starts at
+ *   data[start] (CAN_ISOTP_CHK_PAD_LEN, CAN_ISOTP_CHK_PAD_DATA).  data and
+ *   len leave out the address byte.  Without CAN_ISOTP_RX_PADDING,
+ *   CHK_PAD_LEN asks for the shortest frame.
  *
  ****************************************************************************/
 
@@ -440,6 +488,7 @@ static bool isotp_rx_pad_ok(FAR struct isotp_conn_s *isotp,
                             uint8_t start)
 {
   uint32_t flags = isotp->opt.flags;
+  uint8_t  ae    = isotp_ae(isotp);
   uint8_t  i;
 
   if ((flags & CAN_ISOTP_RX_PADDING) == 0)
@@ -449,10 +498,12 @@ static bool isotp_rx_pad_ok(FAR struct isotp_conn_s *isotp,
           return true;
         }
 
-      return len == (start <= CAN_MAX_DLEN ? start : isotp_fd_len(start));
+      start += ae;
+      return len + ae == (start <= CAN_MAX_DLEN ? start :
+                          isotp_fd_len(start));
     }
 
-  if ((flags & CAN_ISOTP_CHK_PAD_LEN) != 0 && len < CAN_MAX_DLEN)
+  if ((flags & CAN_ISOTP_CHK_PAD_LEN) != 0 && len + ae < CAN_MAX_DLEN)
     {
       return false;
     }
@@ -705,6 +756,7 @@ static inline_function FAR struct iob_s *
 isotp_build_fc_frame(FAR struct isotp_conn_s *conn)
 {
   FAR struct iob_s *iob = can_iob_timedalloc(false, 0, NULL, NULL);
+  uint8_t           ae  = isotp_ae(conn);
 
   if (iob == NULL)
     {
@@ -717,11 +769,12 @@ isotp_build_fc_frame(FAR struct isotp_conn_s *conn)
       FAR struct canfd_frame *cfd =
         (FAR struct canfd_frame *)IOB_DATA(iob);
 
-      cfd->can_id = conn->tx_id;
-      cfd->flags  = CANFD_FDF | (conn->ll.tx_flags & CANFD_BRS);
-      isotp_build_fc(cfd->data, ISOTP_FC_CTS, conn->rx_fc.bs,
+      cfd->can_id  = conn->tx_id;
+      cfd->flags   = CANFD_FDF | (conn->ll.tx_flags & CANFD_BRS);
+      cfd->data[0] = conn->opt.ext_address;
+      isotp_build_fc(&cfd->data[ae], ISOTP_FC_CTS, conn->rx_fc.bs,
                      conn->rx_fc.stmin);
-      cfd->len    = isotp_tx_pad(conn, cfd->data, ISOTP_FC_LEN);
+      cfd->len     = isotp_tx_pad(conn, cfd->data, ae + ISOTP_FC_LEN);
       iob->io_len = CANFD_MTU;
       iob->io_pktlen = CANFD_MTU;
     }
@@ -732,9 +785,10 @@ isotp_build_fc_frame(FAR struct isotp_conn_s *conn)
         (FAR struct can_frame *)IOB_DATA(iob);
 
       cf->can_id  = conn->tx_id;
-      isotp_build_fc(cf->data, ISOTP_FC_CTS, conn->rx_fc.bs,
+      cf->data[0] = conn->opt.ext_address;
+      isotp_build_fc(&cf->data[ae], ISOTP_FC_CTS, conn->rx_fc.bs,
                      conn->rx_fc.stmin);
-      cf->can_dlc = isotp_tx_pad(conn, cf->data, ISOTP_FC_LEN);
+      cf->can_dlc = isotp_tx_pad(conn, cf->data, ae + ISOTP_FC_LEN);
       iob->io_len = CAN_MTU;
       iob->io_pktlen = CAN_MTU;
     }
@@ -975,7 +1029,8 @@ static uint32_t isotp_tx_eventhandler(FAR struct net_driver_s *dev,
 
   /* Hand the frame to the device for this poll (zero-copy). */
 
-  pci = ISOTP_PCI_TYPE(((FAR struct can_frame *)IOB_DATA(iob))->data[0]);
+  pci = ISOTP_PCI_TYPE(((FAR struct can_frame *)IOB_DATA(iob))->data[
+                       isotp_ae(isotp)]);
   isotp_send_iob(dev, iob);
   isotp->tx_last_send = clock_systime_ticks();
 
@@ -1083,6 +1138,7 @@ static int isotp_tx_prepare(FAR struct isotp_conn_s *isotp,
 
   memcpy(isotp->tx_buf, buf, len);
   isotp->tx_enc.buf = isotp->tx_buf;
+  isotp->tx_enc.ae  = isotp_ae(isotp);
   return OK;
 }
 
@@ -1104,7 +1160,8 @@ static int isotp_tx_frame(FAR struct isotp_conn_s *isotp,
   FAR struct iob_s     *iob;
   FAR struct can_frame *cf;
   unsigned int          frame_size;
-  uint8_t               dlen = isotp->ll.tx_dl;
+  uint8_t               ae   = isotp_ae(isotp);
+  uint8_t               dlen = isotp->ll.tx_dl - ae;
   int                   ret;
 
   iob = can_iob_timedalloc(false, 0, NULL, NULL);
@@ -1117,15 +1174,16 @@ static int isotp_tx_frame(FAR struct isotp_conn_s *isotp,
    * so encode via the classic-frame view, then write the header below.
    */
 
-  cf  = (FAR struct can_frame *)IOB_DATA(iob);
-  ret = isotp_encode_frame(&isotp->tx_enc, cf->data, &dlen);
+  cf          = (FAR struct can_frame *)IOB_DATA(iob);
+  cf->data[0] = isotp->opt.ext_address;
+  ret         = isotp_encode_frame(&isotp->tx_enc, &cf->data[ae], &dlen);
   if (ret < 0)
     {
       iob_free_chain(iob);
       return ret;
     }
 
-  dlen = isotp_tx_pad(isotp, cf->data, dlen);
+  dlen = isotp_tx_pad(isotp, cf->data, ae + dlen);
 
   if (isotp->ll.mtu == CANFD_MTU)
     {
@@ -1822,10 +1880,14 @@ static ssize_t isotp_recvmsg(FAR struct socket *psock,
         }
 
       ret = isotp_get_frame_info(iob, &canid, &frame, &dlen);
-      if (ret < 0)
+      if (ret < 0 || dlen <= isotp_ae(isotp))
         {
+          ret = ret < 0 ? ret : -EINVAL;
           goto out;
         }
+
+      frame += isotp_ae(isotp);
+      dlen  -= isotp_ae(isotp);
 
       first = false;
 

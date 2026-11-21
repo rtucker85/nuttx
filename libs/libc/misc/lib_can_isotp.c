@@ -45,9 +45,9 @@
  *
  * Input Parameters:
  *   ctx   - ISO-TP encode context
- *   frame - ISO-TP data
- *   dlen  - in: CAN data field size (CAN_MAX_DLEN=8 or CANFD_MAX_DLEN=64),
- *           out: actual encoded frame length.
+ *   frame - ISO-TP data, after the ctx->ae address bytes
+ *   dlen  - in: CAN data field size (CAN_MAX_DLEN=8 or CANFD_MAX_DLEN=64)
+ *           less ctx->ae, out: actual encoded frame length.
  *
  * Returned Value:
  *   >0 when more frames follow,
@@ -60,10 +60,11 @@ int isotp_encode_frame(FAR struct isotp_encode_s *ctx,
                        FAR uint8_t *frame, FAR uint8_t *dlen)
 {
   uint8_t     max_dlen  = *dlen;
+  uint8_t     sf_dlen   = CAN_MAX_DLEN - ctx->ae; /* Space for a classic SF */
   isotp_len_t remaining = ctx->len - ctx->done;
   uint16_t    payload;
 
-  if (max_dlen < CAN_MAX_DLEN || max_dlen > CANFD_MAX_DLEN ||
+  if (ctx->ae > 1 || max_dlen < sf_dlen || max_dlen > CANFD_MAX_DLEN ||
       ctx->done > ctx->len)
     {
       return -EINVAL;
@@ -77,12 +78,12 @@ int isotp_encode_frame(FAR struct isotp_encode_s *ctx,
 
   if (ctx->done == 0)
     {
-      if (max_dlen > CAN_MAX_DLEN && ctx->len >= CAN_MAX_DLEN)
+      if (max_dlen > sf_dlen && ctx->len >= sf_dlen)
         {
-          /* CAN FD extended SF {0x00, len, data...} for 8..max_dlen-2 bytes.
-           * Only used when len > 7; shorter messages use classic SF so the
-           * peer's ISO-TP socket (which checks cf->len <= 8 first) can
-           * decode them correctly.
+          /* CAN FD extended SF {0x00, len, data...} for 8..max_dlen-2 bytes
+           * (7.. with an address byte).  Only used when the message does not
+           * fit a classic SF, so the peer's ISO-TP socket (which checks
+           * cf->len <= 8 first) can decode it correctly.
            */
 
           if (ctx->len <= max_dlen - 2)
