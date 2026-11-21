@@ -228,3 +228,6 @@ are received. The address byte leaves one byte less for data in each frame.
 
 A ``CAN_ISOTP_LISTEN_MODE`` socket receives messages like any other but sends
 no flow control, so it can follow a transfer between two other nodes.
+
+With ``CAN_ISOTP_HALF_DUPLEX`` a socket drops every frame but flow control
+while it sends a message, and flow control while it receives one.

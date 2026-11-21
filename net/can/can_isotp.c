@@ -78,7 +78,8 @@
 #define ISOTP_OPTS_FLAGS       (CAN_ISOTP_WAIT_TX_DONE | CAN_ISOTP_TX_PADDING | \
                                 CAN_ISOTP_RX_PADDING | CAN_ISOTP_CHK_PAD_LEN | \
                                 CAN_ISOTP_CHK_PAD_DATA | CAN_ISOTP_EXTEND_ADDR | \
-                                CAN_ISOTP_RX_EXT_ADDR | CAN_ISOTP_LISTEN_MODE)
+                                CAN_ISOTP_RX_EXT_ADDR | CAN_ISOTP_LISTEN_MODE | \
+                                CAN_ISOTP_HALF_DUPLEX)
 #define ISOTP_CANID_MASK       (CAN_EFF_FLAG | CAN_EFF_MASK)
 
 /****************************************************************************
@@ -1256,6 +1257,20 @@ static uint32_t isotp_input(FAR struct can_conn_s *conn,
   if (!isotp_rx_match(isotp, iob, &data, &dlen) || dlen == 0)
     {
       return can_callback(dev, conn, CAN_NEWDATA);
+    }
+
+  /* Half duplex: while sending take only flow control, and while receiving
+   * no flow control.
+   */
+
+  if ((isotp->opt.flags & CAN_ISOTP_HALF_DUPLEX) != 0 &&
+      ((isotp->tx_state != ISOTP_TX_IDLE &&
+        ISOTP_PCI_TYPE(data[0]) != ISOTP_PCI_TYPE_FC) ||
+       (isotp->rx_active && ISOTP_PCI_TYPE(data[0]) == ISOTP_PCI_TYPE_FC)))
+    {
+      netdev_iob_clear(dev);
+      iob_free_chain(iob);
+      return 0;
     }
 
   switch (ISOTP_PCI_TYPE(data[0]))
