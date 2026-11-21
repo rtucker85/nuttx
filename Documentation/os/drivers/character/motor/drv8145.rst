@@ -1,0 +1,102 @@
+==========================
+TI DRV8145-Q1 Half-Bridges
+==========================
+
+The DRV8145-Q1 is an automotive half-bridge driver (4.5-35 V, 46 A) with
+integrated high-side current sense (IPROPI), current regulation (ITRIP),
+protection and load diagnostics.  The SPI variants can be daisy-chained on
+one chip select, up to 63 devices.  The driver (``CONFIG_MOTOR_DRV8145``,
+``drivers/motor/drv8145.c``) handles one such chain and registers each
+device as ``/dev/hbN``.  The DRV8143 and DRV8144 share the register map and
+are accepted too.
+
+Daisy chain
+===========
+
+Every transfer is one frame of 2 + 2n bytes: two header bytes (the device
+count and a global CLR_FLT), a command byte for each device, then a data
+byte for each, the furthest device first.  The status byte of every device,
+the headers and the report bytes come back.  The driver checks each frame by
+its header echo, with a sequence number in the spare bits of the second
+header, and the fixed bits of the status bytes, and counts the frames that
+fail.  A device with nothing to do in a frame reads ``DEVICE_ID``.  Device 0
+is the first in the chain: its SDI is the controller's MOSI.
+
+SPI mode 1, up to 10 MHz (``CONFIG_MOTOR_DRV8145_FREQUENCY``, default
+5 MHz).
+
+Set-up
+======
+
+``drv8145_register()`` and ``DRV8145IOC_REINIT`` set the chain up: wake it
+(if the board controls nSLEEP), acknowledge the power-up with a CLR_FLT,
+check every ``DEVICE_ID``, unlock the CONFIG registers, write CONFIG1-4,
+read them back, lock them, unlock SPI_IN and set S_DRVOFF in every device,
+so every output is Hi-Z.  It is tried three times, as a supply still
+settling can make the devices reject writes.  With no VM the SPI variants
+do not answer; the devices are then registered anyway and set up on the
+first ``open()``.
+
+A power-on reset of any device (VM below VMPOR) loses its configuration.
+Before every ioctl that talks to the chain the driver reads
+``FAULT_SUMMARY``, and on POR sets the whole chain up again: every output
+goes Hi-Z and ``por_count`` counts it.
+
+The read-back skips the SPARE bits: on a DRV8145S, CONFIG3's read back
+10b whatever is written.
+
+Without a configuration from the board, CONFIG1-4 keep their reset values
+except DRVOFF_SEL, set to OR, so that S_DRVOFF alone turns a bridge off.
+
+Board interface
+===============
+
+``struct drv8145_board_s`` gives the device count, the first minor number,
+optional CONFIG1-4 for each device, and optional callbacks:
+
+* ``sleep``: nSLEEP of the whole chain.
+* ``drvoff``: the DRVOFF pin of one device.
+* ``in``: the IN pin of one device, as a PWM (frequency, duty) or a level.
+* ``nfault``: the chain's shared nFAULT.
+
+Without ``drvoff`` and ``in`` the outputs are controlled through SPI_IN
+alone.  With them, the driver drives the pins and SPI_IN together, so the
+output follows whichever combination (AND or OR, CONFIG4 DRVOFF_SEL and
+IN_SEL) is configured: turning off, S_DRVOFF is set first, then the
+pins; turning on, IN is set first, then DRVOFF released.
+
+ioctls
+======
+
+* ``DRV8145IOC_GETSTATUS``: ``DEVICE_ID``, ``FAULT_SUMMARY``, ``STATUS1``,
+  ``STATUS2``, ``COMMAND``, ``SPI_IN``, the last status byte, nFAULT, and
+  the chain's POR and bad-frame counts.
+* ``DRV8145IOC_CLEARFAULTS``: a global CLR_FLT, then the lock states and
+  every ``SPI_IN`` are written again.
+* ``DRV8145IOC_GETCONFIG``, ``DRV8145IOC_SETCONFIG``: CONFIG1-4, as the
+  ``DRV8145_CFGn_*`` bits.  Setting unlocks, writes, reads back and locks
+  again, then applies the output again.
+* ``DRV8145IOC_SETOUTPUT``, ``DRV8145IOC_GETOUTPUT``: Hi-Z, low, high, or
+  PWM on IN (up to 125 kHz; needs the board's ``in``).  SPI_IN is read
+  back after every change.
+* ``DRV8145IOC_OLP``: off-state diagnostics, with the output Hi-Z.  With
+  DRVOFF and IN high, OLP_CMP is read with the internal pull-up and
+  VOLP_REFH (S_DIAG 01b), then with the pull-down and VOLP_REFL (S_DIAG
+  11b), each after ``CONFIG_MOTOR_DRV8145_OLP_SETTLE_US``.  The pair is
+  judged against the load type in S_DIAG: normal, open, or shorted to the
+  other rail (SLVSG22B Tables 7-8 and 7-9).
+* ``DRV8145IOC_DRVOFFTEST``: drive the board's DRVOFF pin low and high
+  and read ``STATUS2`` DRVOFF_STAT each time, while S_DRVOFF (with
+  DRVOFF_SEL OR) keeps the bridge off.  Checks the pin reaches the device.
+* ``DRV8145IOC_READREG``, ``DRV8145IOC_WRITEREG``: raw access to the
+  documented registers; other addresses are refused, as the device flags
+  them as SPI errors.
+* ``DRV8145IOC_SLEEP``: the whole chain to sleep (1), or awake and set up
+  again (0).  ``-ENOTSUP`` without the board's ``sleep``.
+* ``DRV8145IOC_REINIT``: set the chain up again.
+
+Not supported
+=============
+
+* nFAULT as an interrupt: the driver reads it only for the status.
+* The SPI (P) variant's VDD supply: it is handled like the S variant.

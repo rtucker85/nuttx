@@ -120,6 +120,7 @@
 #define _SENTIOCBASE    (0x4c00) /* SENT modules ioctl commands */
 #define _PRUIOCBASE     (0x4d00) /* TI PRU (ICSS) core ioctl commands */
 #define _SLGIOCBASE     (0x4e00) /* Renesas GreenPAK SLG46826 ioctl commands */
+#define _DRV8145IOCBASE (0x4f00) /* TI DRV8145 half-bridge ioctls */
 #define _RPTUNBASE      (0x5000) /* Remote processor tunneling ioctl commands */
 #define _VIRTIOBASE     (0x5100) /* VirtIO ioctl commands */
 #define _WLIOCBASE      (0x8b00) /* Wireless modules ioctl network commands */
@@ -894,6 +895,13 @@
 
 #define _SLGIOCVALID(c)       (_IOC_TYPE(c)==_SLGIOCBASE)
 #define _SLGIOC(nr)           _IOC(_SLGIOCBASE,nr)
+
+/* TI DRV8145 half-bridge driver ioctl definitions **************************/
+
+/* see include/nuttx/motor/drv8145.h */
+
+#define _DRV8145IOCVALID(c)   (_IOC_TYPE(c)==_DRV8145IOCBASE)
+#define _DRV8145IOC(nr)       _IOC(_DRV8145IOCBASE,nr)
 
 /* Rptun drivers ************************************************************/
 
