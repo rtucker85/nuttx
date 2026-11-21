@@ -48,6 +48,7 @@
 #include <nuttx/wdog.h>
 #include <nuttx/wqueue.h>
 #include <nuttx/can.h>
+#include <nuttx/can/can_common.h>
 
 #include <nuttx/can/isotp.h>
 
@@ -74,7 +75,9 @@
 #define ISOTP_FC_WAIT_MS       15000
 #define ISOTP_CR_WAIT_MS       1000
 #define ISOTP_RX_STMIN_MS      1
-#define ISOTP_OPTS_FLAGS       CAN_ISOTP_WAIT_TX_DONE
+#define ISOTP_OPTS_FLAGS       (CAN_ISOTP_WAIT_TX_DONE | CAN_ISOTP_TX_PADDING | \
+                                CAN_ISOTP_RX_PADDING | CAN_ISOTP_CHK_PAD_LEN | \
+                                CAN_ISOTP_CHK_PAD_DATA)
 #define ISOTP_CANID_MASK       (CAN_EFF_FLAG | CAN_EFF_MASK)
 
 /****************************************************************************
@@ -380,6 +383,95 @@ static inline_function bool isotp_rx_need_recover(int ret)
 }
 
 /****************************************************************************
+ * Name: isotp_fd_len
+ *
+ * Description:
+ *   The shortest CAN FD data length that holds len bytes.
+ *
+ ****************************************************************************/
+
+static inline_function uint8_t isotp_fd_len(uint8_t len)
+{
+  return can_dlc2bytes(can_bytes2dlc(len));
+}
+
+/****************************************************************************
+ * Name: isotp_tx_pad
+ *
+ * Description:
+ *   Pad a frame of len bytes: to 8 bytes with CAN_ISOTP_TX_PADDING, and
+ *   always to a valid CAN FD length.  Returns the padded length.
+ *
+ ****************************************************************************/
+
+static inline_function uint8_t isotp_tx_pad(FAR struct isotp_conn_s *isotp,
+                                            FAR uint8_t *data, uint8_t len)
+{
+  bool    pad = (isotp->opt.flags & CAN_ISOTP_TX_PADDING) != 0;
+  uint8_t padlen = len;
+
+  if (pad && padlen < CAN_MAX_DLEN)
+    {
+      padlen = CAN_MAX_DLEN;
+    }
+
+  if (isotp->ll.mtu == CANFD_MTU)
+    {
+      padlen = isotp_fd_len(padlen);
+    }
+
+  memset(&data[len], pad ? isotp->opt.txpad_content :
+                           CAN_ISOTP_DEFAULT_PAD_CONTENT, padlen - len);
+  return padlen;
+}
+
+/****************************************************************************
+ * Name: isotp_rx_pad_ok
+ *
+ * Description:
+ *   Check the padding of a received frame of len bytes whose padding
+ *   starts at data[start] (CAN_ISOTP_CHK_PAD_LEN, CAN_ISOTP_CHK_PAD_DATA).
+ *   Without CAN_ISOTP_RX_PADDING, CHK_PAD_LEN asks for the shortest frame.
+ *
+ ****************************************************************************/
+
+static bool isotp_rx_pad_ok(FAR struct isotp_conn_s *isotp,
+                            FAR const uint8_t *data, uint8_t len,
+                            uint8_t start)
+{
+  uint32_t flags = isotp->opt.flags;
+  uint8_t  i;
+
+  if ((flags & CAN_ISOTP_RX_PADDING) == 0)
+    {
+      if ((flags & CAN_ISOTP_CHK_PAD_LEN) == 0)
+        {
+          return true;
+        }
+
+      return len == (start <= CAN_MAX_DLEN ? start : isotp_fd_len(start));
+    }
+
+  if ((flags & CAN_ISOTP_CHK_PAD_LEN) != 0 && len < CAN_MAX_DLEN)
+    {
+      return false;
+    }
+
+  if ((flags & CAN_ISOTP_CHK_PAD_DATA) != 0)
+    {
+      for (i = start; i < len; i++)
+        {
+          if (data[i] != isotp->opt.rxpad_content)
+            {
+              return false;
+            }
+        }
+    }
+
+  return true;
+}
+
+/****************************************************************************
  * Name: isotp_stmin_us
  *
  * Description:
@@ -423,7 +515,8 @@ isotp_rx_input_fc(FAR struct isotp_conn_s *isotp,
 
   if (isotp->tx_state == ISOTP_TX_WAIT_FC)
     {
-      if (dlen < ISOTP_FC_LEN)
+      if (dlen < ISOTP_FC_LEN ||
+          !isotp_rx_pad_ok(isotp, data, dlen, ISOTP_FC_LEN))
         {
           isotp_tx_finish(isotp, -EBADMSG);
         }
@@ -625,10 +718,10 @@ isotp_build_fc_frame(FAR struct isotp_conn_s *conn)
         (FAR struct canfd_frame *)IOB_DATA(iob);
 
       cfd->can_id = conn->tx_id;
-      cfd->len    = ISOTP_FC_LEN;
       cfd->flags  = CANFD_FDF | (conn->ll.tx_flags & CANFD_BRS);
       isotp_build_fc(cfd->data, ISOTP_FC_CTS, conn->rx_fc.bs,
                      conn->rx_fc.stmin);
+      cfd->len    = isotp_tx_pad(conn, cfd->data, ISOTP_FC_LEN);
       iob->io_len = CANFD_MTU;
       iob->io_pktlen = CANFD_MTU;
     }
@@ -639,9 +732,9 @@ isotp_build_fc_frame(FAR struct isotp_conn_s *conn)
         (FAR struct can_frame *)IOB_DATA(iob);
 
       cf->can_id  = conn->tx_id;
-      cf->can_dlc = ISOTP_FC_LEN;
       isotp_build_fc(cf->data, ISOTP_FC_CTS, conn->rx_fc.bs,
                      conn->rx_fc.stmin);
+      cf->can_dlc = isotp_tx_pad(conn, cf->data, ISOTP_FC_LEN);
       iob->io_len = CAN_MTU;
       iob->io_pktlen = CAN_MTU;
     }
@@ -1031,6 +1124,8 @@ static int isotp_tx_frame(FAR struct isotp_conn_s *isotp,
       iob_free_chain(iob);
       return ret;
     }
+
+  dlen = isotp_tx_pad(isotp, cf->data, dlen);
 
   if (isotp->ll.mtu == CANFD_MTU)
     {
@@ -1620,6 +1715,8 @@ static ssize_t isotp_recvmsg(FAR struct socket *psock,
   unsigned int             timeout;
   bool                     nonblock;
   bool                     first = true;
+  bool                     badpad = false;
+  isotp_len_t              prev;
   ssize_t                  ret;
 
   if (msg == NULL || msg->msg_iovlen != 1)
@@ -1732,10 +1829,23 @@ static ssize_t isotp_recvmsg(FAR struct socket *psock,
 
       first = false;
 
-      ret = isotp_decode_frame(&dec, frame, dlen);
+      prev = dec.done;
+      ret  = isotp_decode_frame(&dec, frame, dlen);
       if (ret < 0)
         {
           goto out;
+        }
+
+      /* The last frame of a message (SF or CF) may be padded after the
+       * header (1 byte, 2 for an escaped SF) and its data.
+       */
+
+      if (ret == 0 &&
+          !isotp_rx_pad_ok(isotp, frame, dlen,
+                           (frame[0] == ISOTP_PCI_TYPE_SF ? 2 : 1) +
+                           dec.done - prev))
+        {
+          badpad = true;
         }
 
       iob_free_chain(iob);
@@ -1755,12 +1865,14 @@ static ssize_t isotp_recvmsg(FAR struct socket *psock,
 
   conn_dev_unlock(&isotp->conn.sconn, isotp->conn.dev);
 
-  ret = dec.done;
+  /* A badly padded message is complete: report it, nothing to recover. */
+
+  ret = badpad ? -EBADMSG : dec.done;
 
 out:
   iob_free_chain(iob);
 
-  if (isotp_rx_need_recover(ret))
+  if (!badpad && isotp_rx_need_recover(ret))
     {
       isotp_rx_recover(isotp);
     }
