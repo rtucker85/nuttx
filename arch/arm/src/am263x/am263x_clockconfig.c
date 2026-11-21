@@ -108,6 +108,35 @@ static void am263x_mcan_clock(int n)
 #endif
 
 /****************************************************************************
+ * Name: am263x_lin_clock
+ *
+ * Description:
+ *   LINn: PER_HSDIV0_CLKOUT1 (192 MHz) / 4 = 48 MHz, the clock UARTn
+ *   shares, then a module reset so it starts clean after a JTAG reload.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_AM263X_LIN
+static void am263x_lin_clock(int n)
+{
+  am263x_set_clock(AM263X_MSS_RCM_LIN_CLK_SRC_SEL(n),
+                   AM263X_MSS_RCM_LIN_CLK_DIV_VAL(n),
+                   AM263X_MSS_RCM_LIN_CLK_GATE(n),
+                   RCM_LIN_CLKSRC_PER_HSDIV0_CLKOUT1, RCM_CLK_DIV(4));
+
+  putreg32(RCM_RST_ASSERT, AM263X_MSS_RCM_LIN_RST_CTRL(n));
+  while (getreg32(AM263X_MSS_RCM_LIN_RST_CTRL(n)) != RCM_RST_ASSERT)
+    {
+    }
+
+  putreg32(RCM_RST_DEASSERT, AM263X_MSS_RCM_LIN_RST_CTRL(n));
+  while (getreg32(AM263X_MSS_RCM_LIN_RST_CTRL(n)) != RCM_RST_DEASSERT)
+    {
+    }
+}
+#endif
+
+/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -185,6 +214,24 @@ void am263x_clockconfig(void)
 #endif
 #ifdef CONFIG_AM263X_MCAN3
   am263x_mcan_clock(3);
+#endif
+
+  /* LINn: 48 MHz, see am263x_lin_clock() */
+
+#ifdef CONFIG_AM263X_LIN0
+  am263x_lin_clock(0);
+#endif
+#ifdef CONFIG_AM263X_LIN1
+  am263x_lin_clock(1);
+#endif
+#ifdef CONFIG_AM263X_LIN2
+  am263x_lin_clock(2);
+#endif
+#ifdef CONFIG_AM263X_LIN3
+  am263x_lin_clock(3);
+#endif
+#ifdef CONFIG_AM263X_LIN4
+  am263x_lin_clock(4);
 #endif
 
   /* CPSW: its clock (SYS_CLK, 200 MHz) and the RGMII clocks are ungated

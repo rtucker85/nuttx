@@ -62,3 +62,7 @@ endif
 ifeq ($(CONFIG_AM263X_MCAN),y)
 CHIP_CSRCS += am263x_mcan.c
 endif
+
+ifeq ($(CONFIG_AM263X_LIN),y)
+CHIP_CSRCS += am263x_lin.c
+endif

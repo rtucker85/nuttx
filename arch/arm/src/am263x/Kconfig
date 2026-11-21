@@ -223,6 +223,42 @@ config AM263X_MCAN3
 	depends on NET_CAN
 	select AM263X_MCAN
 
+config AM263X_LIN
+	bool
+	default n
+	select NET_CAN_HAVE_ERRORS
+	select MM_IOB
+
+config AM263X_LIN0
+	bool "LIN0"
+	default n
+	depends on NET_CAN
+	select AM263X_LIN
+
+config AM263X_LIN1
+	bool "LIN1"
+	default n
+	depends on NET_CAN
+	select AM263X_LIN
+
+config AM263X_LIN2
+	bool "LIN2"
+	default n
+	depends on NET_CAN
+	select AM263X_LIN
+
+config AM263X_LIN3
+	bool "LIN3"
+	default n
+	depends on NET_CAN
+	select AM263X_LIN
+
+config AM263X_LIN4
+	bool "LIN4"
+	default n
+	depends on NET_CAN
+	select AM263X_LIN
+
 endmenu # AM263x Peripheral Selection
 
 menu "AM263x ADC Configuration"
@@ -312,6 +348,27 @@ config AM263X_MCAN_LOOPBACK
 		recessive.  For testing without a bus.
 
 endmenu # AM263x MCAN Configuration
+
+menu "AM263x LIN Configuration"
+	depends on AM263X_LIN
+
+config AM263X_LIN_BITRATE
+	int "Bit rate"
+	default 19200
+	range 1000 20000
+	---help---
+		LIN bit rate in bit/s, the same for every port until
+		SIOCSCANBITRATE changes it.
+
+config AM263X_LIN_LOOPBACK
+	bool "Internal loopback"
+	default n
+	---help---
+		Run every LIN module in internal loopback: frames sent are
+		received back and the TX pins stay recessive.  For testing
+		without a bus.
+
+endmenu # AM263x LIN Configuration
 
 menu "AM263x I2C Configuration"
 	depends on AM263X_I2C
