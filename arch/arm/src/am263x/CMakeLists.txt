@@ -63,4 +63,8 @@ if(CONFIG_AM263X_EPWM)
   list(APPEND SRCS am263x_pwm.c)
 endif()
 
+if(CONFIG_AM263X_MCAN)
+  list(APPEND SRCS am263x_mcan.c)
+endif()
+
 target_sources(arch PRIVATE ${SRCS})
