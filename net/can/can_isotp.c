@@ -78,7 +78,7 @@
 #define ISOTP_OPTS_FLAGS       (CAN_ISOTP_WAIT_TX_DONE | CAN_ISOTP_TX_PADDING | \
                                 CAN_ISOTP_RX_PADDING | CAN_ISOTP_CHK_PAD_LEN | \
                                 CAN_ISOTP_CHK_PAD_DATA | CAN_ISOTP_EXTEND_ADDR | \
-                                CAN_ISOTP_RX_EXT_ADDR)
+                                CAN_ISOTP_RX_EXT_ADDR | CAN_ISOTP_LISTEN_MODE)
 #define ISOTP_CANID_MASK       (CAN_EFF_FLAG | CAN_EFF_MASK)
 
 /****************************************************************************
@@ -241,6 +241,19 @@ isotp_conn(FAR struct socket *psock)
 static inline_function uint8_t isotp_ae(FAR struct isotp_conn_s *isotp)
 {
   return (isotp->opt.flags & CAN_ISOTP_EXTEND_ADDR) != 0;
+}
+
+/****************************************************************************
+ * Name: isotp_listen_mode
+ *
+ * Description:
+ *   A CAN_ISOTP_LISTEN_MODE socket only listens: it sends no flow control.
+ *
+ ****************************************************************************/
+
+static inline_function bool isotp_listen_mode(FAR struct isotp_conn_s *isotp)
+{
+  return (isotp->opt.flags & CAN_ISOTP_LISTEN_MODE) != 0;
 }
 
 /****************************************************************************
@@ -646,8 +659,8 @@ isotp_rx_input_sf(FAR struct isotp_conn_s *isotp,
  * Name: isotp_rx_input_ff
  *
  * Description:
- *   First Frame: open the RX session and queue the CTS flow control.
- *   Net locked.
+ *   First Frame: open the RX session and queue the CTS flow control
+ *   (none in listen mode).  Net locked.
  *
  ****************************************************************************/
 
@@ -696,7 +709,7 @@ isotp_rx_input_ff(FAR struct isotp_conn_s *isotp,
   isotp->rx_sn         = 1;
   isotp->rx_block      = 0;
   isotp->rx_active     = true;
-  isotp->rx_fc_pending = true;
+  isotp->rx_fc_pending = !isotp_listen_mode(isotp);
 }
 
 /****************************************************************************
@@ -738,7 +751,7 @@ isotp_rx_input_cf(FAR struct isotp_conn_s *isotp,
   else if (isotp->rx_fc.bs != 0 && ++isotp->rx_block >= isotp->rx_fc.bs)
     {
       isotp->rx_block      = 0;
-      isotp->rx_fc_pending = true;
+      isotp->rx_fc_pending = !isotp_listen_mode(isotp);
     }
 
   return true;

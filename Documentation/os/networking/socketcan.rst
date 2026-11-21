@@ -225,3 +225,6 @@ returns ``EBADMSG``; a flow control that fails it ends the transfer with
 sent starts with ``ext_address``, and only frames that start with
 ``rx_ext_address`` (with ``CAN_ISOTP_RX_EXT_ADDR``) or else ``ext_address``
 are received. The address byte leaves one byte less for data in each frame.
+
+A ``CAN_ISOTP_LISTEN_MODE`` socket receives messages like any other but sends
+no flow control, so it can follow a transfer between two other nodes.
