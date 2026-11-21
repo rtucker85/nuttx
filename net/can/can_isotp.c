@@ -80,7 +80,8 @@
                                 CAN_ISOTP_CHK_PAD_DATA | CAN_ISOTP_EXTEND_ADDR | \
                                 CAN_ISOTP_RX_EXT_ADDR | CAN_ISOTP_LISTEN_MODE | \
                                 CAN_ISOTP_HALF_DUPLEX | CAN_ISOTP_FORCE_TXSTMIN | \
-                                CAN_ISOTP_FORCE_RXSTMIN | ISOTP_BC_FLAGS)
+                                CAN_ISOTP_FORCE_RXSTMIN | ISOTP_BC_FLAGS | \
+                                CAN_ISOTP_DYN_FC_PARMS)
 #define ISOTP_BC_FLAGS         (CAN_ISOTP_SF_BROADCAST | CAN_ISOTP_CF_BROADCAST)
 #define ISOTP_CANID_MASK       (CAN_EFF_FLAG | CAN_EFF_MASK)
 
@@ -113,7 +114,9 @@ struct isotp_conn_s
   struct isotp_poll_s           pollinfo[CONFIG_NET_CAN_NPOLLWAITERS];
   struct can_isotp_options     opt;             /* ISO-TP socket options */
   struct can_isotp_ll_options  ll;              /* Link-layer options */
+  uint8_t                      tx_bs;           /* BS of the FC in use */
   uint8_t                      tx_bs_remaining; /* CFs left in block (0=inf) */
+  bool                         tx_fc_seen;      /* An FC for this message */
   uint32_t                     tx_stmin_us;     /* CF gap: STmin + N_As (us) */
   uint32_t                     tx_frame_ns;     /* N_As, frame_txtime (ns) */
   uint32_t                     tx_force_ns;     /* CAN_ISOTP_TX_STMIN (ns) */
@@ -639,8 +642,20 @@ isotp_rx_input_fc(FAR struct isotp_conn_s *isotp,
           switch (data[0] & ISOTP_FC_FS_MASK)
             {
               case ISOTP_FC_CTS:
-                isotp->tx_bs_remaining = data[1];
-                isotp->tx_stmin_us     = isotp_tx_gap_us(isotp, data[2]);
+
+                /* BS and STmin of the first FC hold for the whole message
+                 * (ISO 15765-2:2016), of each FC with DYN_FC_PARMS.
+                 */
+
+                if (!isotp->tx_fc_seen ||
+                    (isotp->opt.flags & CAN_ISOTP_DYN_FC_PARMS) != 0)
+                  {
+                    isotp->tx_bs       = data[1];
+                    isotp->tx_stmin_us = isotp_tx_gap_us(isotp, data[2]);
+                    isotp->tx_fc_seen  = true;
+                  }
+
+                isotp->tx_bs_remaining = isotp->tx_bs;
                 isotp->tx_last_send    = clock_systime_ticks();
                 isotp->tx_state        = ISOTP_TX_SENDING;
                 wd_cancel(&isotp->tx_wdog);
@@ -1180,6 +1195,7 @@ static int isotp_tx_start(FAR struct isotp_conn_s *isotp)
   nxsem_reset(&isotp->tx_done_sem, 0);
 
   isotp->tx_bs_remaining = 0;
+  isotp->tx_fc_seen      = false;
   isotp->tx_state        = ISOTP_TX_SENDING;
 
   netdev_txnotify_dev(dev, CAN_POLL);

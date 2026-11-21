@@ -207,7 +207,9 @@ The sender honors every Flow Control the receiver may send. STmin values
 counts as 127 ms. A WAIT status starts the N_Bs wait again. An overflow
 status ends the transfer with ``EMSGSIZE``, and a reserved status or a Flow
 Control shorter than 3 bytes with ``EBADMSG``; ``send`` returns the error
-with ``CAN_ISOTP_WAIT_TX_DONE``. This receiver never sends WAIT, so
+with ``CAN_ISOTP_WAIT_TX_DONE``. The block size and STmin of the first Flow
+Control hold for the whole message (ISO 15765-2:2016), or with
+``CAN_ISOTP_DYN_FC_PARMS`` those of each Flow Control. This receiver never sends WAIT, so
 ``wftmax`` in ``CAN_ISOTP_RECV_FC`` is accepted and not used.
 
 ``CAN_ISOTP_TX_PADDING`` pads every frame sent, flow control included, to 8
