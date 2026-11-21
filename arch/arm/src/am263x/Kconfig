@@ -192,6 +192,37 @@ config AM263X_EPWM
 		channel 2.  Each can also start ADC conversions through its
 		SOCA and SOCB (am263x_pwm_socconfig()).
 
+config AM263X_MCAN
+	bool
+	default n
+	select NET_CAN_HAVE_CANFD
+	select NET_CAN_HAVE_ERRORS
+	select MM_IOB
+
+config AM263X_MCAN0
+	bool "MCAN0"
+	default n
+	depends on NET_CAN
+	select AM263X_MCAN
+
+config AM263X_MCAN1
+	bool "MCAN1"
+	default n
+	depends on NET_CAN
+	select AM263X_MCAN
+
+config AM263X_MCAN2
+	bool "MCAN2"
+	default n
+	depends on NET_CAN
+	select AM263X_MCAN
+
+config AM263X_MCAN3
+	bool "MCAN3"
+	default n
+	depends on NET_CAN
+	select AM263X_MCAN
+
 endmenu # AM263x Peripheral Selection
 
 menu "AM263x ADC Configuration"
@@ -232,6 +263,55 @@ config AM263X_ADC_INTXBAR
 		AM263X_ADC_INTXBAR + n (R5F interrupt 146 + that).
 
 endmenu # AM263x ADC Configuration
+
+menu "AM263x MCAN Configuration"
+	depends on AM263X_MCAN
+
+config AM263X_MCAN_BITRATE
+	int "Nominal bit rate"
+	default 500000
+	---help---
+		Arbitration-phase (and classic CAN) bit rate in bit/s, the same
+		for every port until SIOCSCANBITRATE changes it.  The 80 MHz
+		clock must divide into a whole number of 5-385 time quanta per
+		bit.
+
+config AM263X_MCAN_SAMPLEP
+	int "Nominal sample point (percent)"
+	default 80
+	range 50 95
+
+config AM263X_MCAN_DATA_BITRATE
+	int "CAN FD data bit rate"
+	default 2000000
+	depends on NET_CAN_CANFD
+	---help---
+		Data-phase bit rate in bit/s, used by CAN FD frames sent with
+		CANFD_BRS.  Transmitter delay compensation is on above 1 Mbit/s.
+
+config AM263X_MCAN_DATA_SAMPLEP
+	int "CAN FD data sample point (percent)"
+	default 75
+	range 50 95
+	depends on NET_CAN_CANFD
+
+config AM263X_MCAN_BUSERR
+	bool "Report bus errors"
+	default n
+	depends on NET_CAN_ERRORS
+	---help---
+		Also send an error frame for each protocol error (stuff, form,
+		ACK, bit, CRC).  Without a bus partner every frame sent gives one.
+
+config AM263X_MCAN_LOOPBACK
+	bool "Internal loopback"
+	default n
+	---help---
+		Run every MCAN in internal loopback (TEST.LBCK with bus
+		monitoring): frames sent are received back and the TX pins stay
+		recessive.  For testing without a bus.
+
+endmenu # AM263x MCAN Configuration
 
 menu "AM263x I2C Configuration"
 	depends on AM263X_I2C

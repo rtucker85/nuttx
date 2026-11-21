@@ -78,6 +78,36 @@ static void am263x_mcspi_clock(int n)
 #endif
 
 /****************************************************************************
+ * Name: am263x_mcan_clock
+ *
+ * Description:
+ *   MCANn: DPLL_CORE_HSDIV0_CLKOUT0 (400 MHz) / 5 = 80 MHz, the usual
+ *   CAN FD clock, then a module reset so it starts clean after a JTAG
+ *   reload.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_AM263X_MCAN
+static void am263x_mcan_clock(int n)
+{
+  am263x_set_clock(AM263X_MSS_RCM_MCAN_CLK_SRC_SEL(n),
+                   AM263X_MSS_RCM_MCAN_CLK_DIV_VAL(n),
+                   AM263X_MSS_RCM_MCAN_CLK_GATE(n),
+                   RCM_MCAN_CLKSRC_CORE_HSDIV0_CLKOUT0, RCM_CLK_DIV(5));
+
+  putreg32(RCM_RST_ASSERT, AM263X_MSS_RCM_MCAN_RST_CTRL(n));
+  while (getreg32(AM263X_MSS_RCM_MCAN_RST_CTRL(n)) != RCM_RST_ASSERT)
+    {
+    }
+
+  putreg32(RCM_RST_DEASSERT, AM263X_MSS_RCM_MCAN_RST_CTRL(n));
+  while (getreg32(AM263X_MSS_RCM_MCAN_RST_CTRL(n)) != RCM_RST_DEASSERT)
+    {
+    }
+}
+#endif
+
+/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -140,6 +170,21 @@ void am263x_clockconfig(void)
 #endif
 #ifdef CONFIG_AM263X_MCSPI4
   am263x_mcspi_clock(4);
+#endif
+
+  /* MCANn: 80 MHz, see am263x_mcan_clock() */
+
+#ifdef CONFIG_AM263X_MCAN0
+  am263x_mcan_clock(0);
+#endif
+#ifdef CONFIG_AM263X_MCAN1
+  am263x_mcan_clock(1);
+#endif
+#ifdef CONFIG_AM263X_MCAN2
+  am263x_mcan_clock(2);
+#endif
+#ifdef CONFIG_AM263X_MCAN3
+  am263x_mcan_clock(3);
 #endif
 
   /* CPSW: its clock (SYS_CLK, 200 MHz) and the RGMII clocks are ungated

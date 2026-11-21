@@ -54,6 +54,7 @@
 #define AM263X_RTI2_BASE            0x52182000
 #define AM263X_RTI3_BASE            0x52183000
 #define AM263X_I2C0_BASE            0x52500000  /* I2C0-3, 4 KB apart */
+#define AM263X_MCAN0_BASE           0x52600000  /* MCAN0-3, 64 KB apart */
 #define AM263X_MCSPI0_BASE          0x52200000  /* MCSPI0-4, 4 KB apart */
 #define AM263X_CPSW_BASE            0x52800000  /* CPSW3G, see am263x_cpsw.h */
 #define AM263X_UART0_BASE           0x52300000
