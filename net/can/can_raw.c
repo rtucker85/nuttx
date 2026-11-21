@@ -1735,7 +1735,7 @@ static int can_raw_getsockopt(FAR struct socket *psock, int level,
         *value_len        = sizeof(int);
         break;
 
-#if CONFIG_NET_RECV_BUFSIZE > 0
+#if CONFIG_NET_CAN_RECV_BUFSIZE > 0
       case SO_RCVBUF:
         /* Verify that option is the size of an 'int'.  Should also check
          * that 'value' is properly aligned for an 'int'
@@ -1918,7 +1918,7 @@ static int can_raw_setsockopt(FAR struct socket *psock, int level,
         conn_unlock(&conn->sconn);
         break;
 
-#if CONFIG_NET_RECV_BUFSIZE > 0
+#if CONFIG_NET_CAN_RECV_BUFSIZE > 0
       case SO_RCVBUF:
         {
           int buffersize;
@@ -1940,7 +1940,7 @@ static int can_raw_setsockopt(FAR struct socket *psock, int level,
               return -EINVAL;
             }
 
-#if CONFIG_NET_MAX_RECV_BUFSIZE > 0
+#if defined(CONFIG_NET_MAX_RECV_BUFSIZE) && CONFIG_NET_MAX_RECV_BUFSIZE > 0
           buffersize = MIN(buffersize, CONFIG_NET_MAX_RECV_BUFSIZE);
 #endif
           conn->rcvbufs = buffersize;

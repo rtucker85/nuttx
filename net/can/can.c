@@ -566,7 +566,7 @@ int can_datahandler(FAR struct net_driver_s *dev,
   int ret = 0;
 
   conn_lock(&conn->sconn);
-#if CONFIG_NET_RECV_BUFSIZE > 0
+#if CONFIG_NET_CAN_RECV_BUFSIZE > 0
 #  if CONFIG_NET_CAN_NBUFFERS > 0
   int bufnum = div_const_roundup(conn->rcvbufs, NET_CAN_PKTSIZE);
 #  else
@@ -777,8 +777,8 @@ void can_conn_init(FAR struct can_conn_s *conn)
    * a memory leak, and it is necessary to limit the readahead.
    */
 
-#if CONFIG_NET_RECV_BUFSIZE > 0
-  conn->rcvbufs = CONFIG_NET_RECV_BUFSIZE;
+#if CONFIG_NET_CAN_RECV_BUFSIZE > 0
+  conn->rcvbufs = CONFIG_NET_CAN_RECV_BUFSIZE;
 #endif
 
 #if CONFIG_NET_SEND_BUFSIZE > 0

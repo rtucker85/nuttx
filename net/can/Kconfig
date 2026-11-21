@@ -186,6 +186,23 @@ config NET_CAN_NBUFFERS
 		This setting determines the number of preallocated CAN buffers
 		available for packet data.
 
+config NET_CAN_RECV_BUFSIZE
+	int "Default CAN socket receive buffer size"
+	default NET_RECV_BUFSIZE
+	---help---
+		The default SO_RCVBUF of a CAN socket, in bytes: received frames
+		that would take more than this are dropped.  0 means no limit.
+
+		Every bound CAN_RAW socket whose filter matches a frame keeps a
+		copy until it is read, including sockets that only send.  The
+		copies come from the IOB pool the rest of the network uses, so
+		without a limit one such socket can take every IOB.
+
+		A frame counts as CONFIG_IOB_BUFSIZE bytes, the IOB it takes, or
+		as the size of a CAN frame when CONFIG_NET_CAN_NBUFFERS > 0.  The
+		default is CONFIG_NET_RECV_BUFSIZE, which applies to TCP and UDP
+		too; set this alone to limit CAN only.
+
 config NET_CAN_NPOLLWAITERS
 	int "Number of poll threads"
 	default 4
