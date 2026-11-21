@@ -33,9 +33,12 @@
  * RX: line 0's interrupt masks RF0N and wakes the upper half, whose
  * receive() empties FIFO 0 and unmasks it again.  TX: transmit() writes
  * the element at the FIFO's put index and keeps the packet until the
- * buffer's request is no longer pending, when reclaim() frees it; TC wakes
- * the upper half to do that.  Bus-off starts recovery at once (the
- * controller then waits for 129 x 11 recessive bits).
+ * buffer's request is no longer pending, when reclaim() frees it.  The
+ * upper half only calls reclaim() from transmit() or when the TX quota is
+ * used up, so TC also queues mcan_txwork() to do it: the packets would
+ * otherwise keep up to MCAN_NTX IOBs after a burst.  Bus-off starts
+ * recovery at once (the controller then waits for 129 x 11 recessive
+ * bits).
  */
 
 /****************************************************************************
@@ -58,6 +61,7 @@
 #include <nuttx/can.h>
 #include <nuttx/irq.h>
 #include <nuttx/spinlock.h>
+#include <nuttx/wqueue.h>
 #include <nuttx/net/ioctl.h>
 #include <nuttx/net/netdev_lowerhalf.h>
 
@@ -163,6 +167,7 @@ struct am263x_mcan_s
 
   FAR netpkt_t *txpkt[MCAN_NTX];
   uint32_t  txbusy;             /* Elements with a packet in them */
+  struct work_s txwork;         /* Reclaims them after TC */
 
   /* Errors noticed by the interrupt, reported by receive() */
 
@@ -195,6 +200,7 @@ static int  mcan_ioctl(FAR struct netdev_lowerhalf_s *dev, int cmd,
                        unsigned long arg);
 #endif
 static void mcan_reclaim(FAR struct netdev_lowerhalf_s *dev);
+static void mcan_txwork(FAR void *arg);
 
 /****************************************************************************
  * Private Data
@@ -701,6 +707,11 @@ static int mcan_interrupt(int irq, FAR void *context, FAR void *arg)
 
   if ((ir & MCAN_INT_TC) != 0)
     {
+      if (work_available(&priv->txwork))
+        {
+          work_queue(LPWORK, &priv->txwork, mcan_txwork, priv, 0);
+        }
+
       netdev_lower_txdone(&priv->dev);
     }
 
@@ -905,6 +916,24 @@ static void mcan_reclaim(FAR struct netdev_lowerhalf_s *dev)
           priv->txbusy &= ~(1u << i);
         }
     }
+}
+
+/****************************************************************************
+ * Name: mcan_txwork
+ *
+ * Description:
+ *   Free the packets of sent elements once TC has fired.  reclaim() and
+ *   transmit() run with the device locked, so this takes the lock too.
+ *
+ ****************************************************************************/
+
+static void mcan_txwork(FAR void *arg)
+{
+  FAR struct am263x_mcan_s *priv = arg;
+
+  netdev_lock(&priv->dev.netdev);
+  mcan_reclaim(&priv->dev);
+  netdev_unlock(&priv->dev.netdev);
 }
 
 /****************************************************************************
