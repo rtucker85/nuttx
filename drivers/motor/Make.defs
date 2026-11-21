@@ -32,6 +32,12 @@ ifeq ($(CONFIG_MOTOR_UPPER),y)
 CSRCS += motor.c
 endif
 
+# TI DRV8145 half-bridge drivers
+
+ifeq ($(CONFIG_MOTOR_DRV8145),y)
+CSRCS += drv8145.c
+endif
+
 # Stepper upper half and lower halves
 
 ifeq ($(CONFIG_STEPPER_UPPER),y)
