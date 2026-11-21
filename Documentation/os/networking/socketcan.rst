@@ -230,3 +230,11 @@ no flow control, so it can follow a transfer between two other nodes.
 
 With ``CAN_ISOTP_HALF_DUPLEX`` a socket drops every frame but flow control
 while it sends a message, and flow control while it receives one.
+
+``CAN_ISOTP_FORCE_TXSTMIN`` replaces the receiver's STmin with the time in ns
+set by the ``CAN_ISOTP_TX_STMIN`` option. ``CAN_ISOTP_FORCE_RXSTMIN`` drops
+consecutive frames that come sooner than the ``CAN_ISOTP_RX_STMIN`` option
+after the last one taken. ``frame_txtime`` in ``CAN_ISOTP_OPTS`` is added
+between consecutive frames. It starts at 0 rather than Linux's 50 us,
+because frames go to the CAN controller's queue and the bus paces them; 0
+keeps the current value and ``CAN_ISOTP_FRAME_TXTIME_ZERO`` sets 0.
