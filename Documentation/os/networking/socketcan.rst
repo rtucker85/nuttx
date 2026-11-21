@@ -208,3 +208,14 @@ status ends the transfer with ``EMSGSIZE``, and a reserved status or a Flow
 Control shorter than 3 bytes with ``EBADMSG``; ``send`` returns the error
 with ``CAN_ISOTP_WAIT_TX_DONE``. This receiver never sends WAIT, so
 ``wftmax`` in ``CAN_ISOTP_RECV_FC`` is accepted and not used.
+
+``CAN_ISOTP_TX_PADDING`` pads every frame sent, flow control included, to 8
+bytes with ``txpad_content``. CAN FD frames are always padded up to the next
+valid CAN FD length, with ``txpad_content`` or, without
+``CAN_ISOTP_TX_PADDING``, with 0xCC. On receive, ``CAN_ISOTP_CHK_PAD_LEN``
+asks for frames padded to at least 8 bytes with ``CAN_ISOTP_RX_PADDING``,
+or for frames no longer than needed without it, and
+``CAN_ISOTP_CHK_PAD_DATA`` asks for padding bytes equal to
+``rxpad_content``. A message that fails the check is dropped and ``recv``
+returns ``EBADMSG``; a flow control that fails it ends the transfer with
+``EBADMSG``.

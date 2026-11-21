@@ -156,8 +156,8 @@
  * flags:          ISO-TP behavior flags.
  * frame_txtime:   Frame transmission time (not used yet).
  * ext_address:    Extended address (not used yet).
- * txpad_content:  TX padding content (not used yet).
- * rxpad_content:  RX padding content (not used yet).
+ * txpad_content:  TX padding content (CAN_ISOTP_TX_PADDING).
+ * rxpad_content:  RX padding content (CAN_ISOTP_CHK_PAD_DATA).
  * rx_ext_address: RX extended address (not used yet).
  */
 
