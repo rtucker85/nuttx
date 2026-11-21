@@ -36,6 +36,7 @@
 #include <assert.h>
 
 #include <nuttx/clock.h>
+#include <nuttx/kmalloc.h>
 #include <nuttx/semaphore.h>
 #include <nuttx/nuttx.h>
 #include <nuttx/mm/iob.h>
@@ -111,7 +112,8 @@ struct isotp_conn_s
   canid_t                      tx_id;           /* CAN ID for TX frames */
   sem_t                        tx_sem;          /* Serialize senders (init 1) */
   sem_t                        tx_done_sem;     /* TX done */
-  struct iob_queue_s           tx_q;            /* Prebuilt TX frames */
+  FAR uint8_t                 *tx_buf;          /* Copy of the message */
+  struct isotp_encode_s        tx_enc;          /* Frames sent so far */
   struct wdog_s                tx_wdog;         /* N_Bs flow-control timeout */
   struct work_s                tx_work;         /* STmin pacing work */
   FAR struct devif_callback_s *tx_cb;           /* CAN_POLL: TX engine + FC */
@@ -158,6 +160,8 @@ static int isotp_setsockopt(FAR struct socket *psock, int level, int option,
 
 static void isotp_tx_finish(FAR struct isotp_conn_s *isotp, int result);
 static void isotp_tx_wait_fc(FAR struct isotp_conn_s *isotp);
+static int  isotp_tx_frame(FAR struct isotp_conn_s *isotp,
+                           FAR struct iob_s **iob_out);
 
 /****************************************************************************
  * Private Data
@@ -663,7 +667,7 @@ isotp_wait_tx_done_enabled(FAR struct isotp_conn_s *conn)
  * Description:
  *   N_Bs watchdog: the receiver never sent flow control.  Runs in timer-ISR
  *   context, so it must not lock, transmit or free IOBs; it only releases
- *   the sender with an error.  tx_q is reclaimed by the next send/close.
+ *   the sender with an error.  tx_buf is freed by the next send/close.
  *
  ****************************************************************************/
 
@@ -717,6 +721,16 @@ isotp_tx_stmin_ticks(FAR struct isotp_conn_s *isotp)
 }
 
 /****************************************************************************
+ * Name: isotp_tx_free
+ ****************************************************************************/
+
+static inline_function void isotp_tx_free(FAR struct isotp_conn_s *isotp)
+{
+  kmm_free(isotp->tx_buf);
+  isotp->tx_buf = NULL;
+}
+
+/****************************************************************************
  * Name: isotp_tx_finish
  *
  * Description:
@@ -740,7 +754,7 @@ isotp_tx_finish(FAR struct isotp_conn_s *isotp, int result)
   isotp->tx_bs_remaining = 0;
   isotp->tx_stmin_us     = 0;
 
-  iob_free_queue(&isotp->tx_q);
+  isotp_tx_free(isotp);
 
   isotp_notify_pollout(isotp);
   nxsem_post(&isotp->tx_done_sem);
@@ -782,10 +796,8 @@ static uint32_t isotp_tx_eventhandler(FAR struct net_driver_s *dev,
 {
   FAR struct isotp_conn_s *isotp = pvpriv;
   FAR struct iob_s        *iob;
-  FAR uint8_t             *frame;
-  canid_t                  canid;
-  uint8_t                  dlen;
   uint8_t                  pci;
+  int                      ret;
 
   if (isotp == NULL || (flags & CAN_POLL) == 0)
     {
@@ -822,28 +834,13 @@ static uint32_t isotp_tx_eventhandler(FAR struct net_driver_s *dev,
       return flags;
     }
 
-  iob = iob_peek_queue(&isotp->tx_q);
-  if (iob == NULL)
-    {
-      isotp_tx_finish(isotp, OK);
-      return flags;
-    }
-
-  if (isotp_get_frame_info(iob, &canid, &frame, &dlen) < 0)
-    {
-      isotp_tx_finish(isotp, -EINVAL);
-      return flags;
-    }
-
-  pci = ISOTP_PCI_TYPE(frame[0]);
-
-  /* Honor the receiver's STmin between consecutive frames.  FF/SF go out
-   * immediately; a CF that is still within STmin defers via a one-shot work
-   * item (the only way to wait then send from task context).  STmin == 0
-   * never defers.
+  /* Honor the receiver's STmin between consecutive frames: every frame
+   * after the first is a CF.  A CF that is still within STmin defers via a
+   * one-shot work item (the only way to wait then send from task context).
+   * STmin == 0 never defers.
    */
 
-  if (pci == ISOTP_PCI_TYPE_CF && isotp->tx_stmin_us > 0)
+  if (isotp->tx_enc.done > 0 && isotp->tx_stmin_us > 0)
     {
       clock_t need    = isotp_tx_stmin_ticks(isotp);
       clock_t elapsed = (clock_t)(clock_systime_ticks() -
@@ -863,9 +860,27 @@ static uint32_t isotp_tx_eventhandler(FAR struct net_driver_s *dev,
         }
     }
 
+  ret = isotp_tx_frame(isotp, &iob);
+  if (ret == -ENOMEM)
+    {
+      /* No IOB free: try again on the next tick. */
+
+      if (work_available(&isotp->tx_work))
+        {
+          work_queue(HPWORK, &isotp->tx_work, isotp_tx_resume, isotp, 1);
+        }
+
+      return flags;
+    }
+  else if (ret < 0)
+    {
+      isotp_tx_finish(isotp, ret);
+      return flags;
+    }
+
   /* Hand the frame to the device for this poll (zero-copy). */
 
-  iob = iob_remove_queue(&isotp->tx_q);
+  pci = ISOTP_PCI_TYPE(((FAR struct can_frame *)IOB_DATA(iob))->data[0]);
   isotp_send_iob(dev, iob);
   isotp->tx_last_send = clock_systime_ticks();
 
@@ -875,7 +890,7 @@ static uint32_t isotp_tx_eventhandler(FAR struct net_driver_s *dev,
 
       isotp_tx_wait_fc(isotp);
     }
-  else if (iob_peek_queue(&isotp->tx_q) == NULL)
+  else if (ret == 0)
     {
       /* Single frame, or last consecutive frame: transfer complete. */
 
@@ -901,7 +916,7 @@ static uint32_t isotp_tx_eventhandler(FAR struct net_driver_s *dev,
  *
  * Description:
  *   Arm the CAN_POLL handler and poke a poll (device-locked so an FC can't
- *   race the setup).  On failure the caller cleans up tx_q and tx_sem.
+ *   race the setup).  On failure the caller frees tx_buf and tx_sem.
  *
  ****************************************************************************/
 
@@ -947,88 +962,93 @@ static inline_function bool isotp_tx_idle(FAR struct isotp_conn_s *isotp)
 }
 
 /****************************************************************************
- * Name: isotp_tx_enqueue
+ * Name: isotp_tx_prepare
  *
  * Description:
- *   Segment a user message into a queue of ready-to-send CAN frames, copying
- *   the payload straight from the caller's buffer.  txq is emptied on error.
+ *   Copy the user message: a send returns before the transfer is done.
  *
  ****************************************************************************/
 
-static int isotp_tx_enqueue(FAR struct isotp_conn_s *isotp,
+static int isotp_tx_prepare(FAR struct isotp_conn_s *isotp,
                             FAR const uint8_t *buf, size_t len)
 {
-  struct isotp_encode_s enc;
-  int                   ret;
+  int ret;
 
-  ret = isotp_encode_init(&enc, buf, len);
+  ret = isotp_encode_init(&isotp->tx_enc, buf, len);
   if (ret < 0)
     {
       return ret;
     }
 
-  for (; ; )
+  isotp->tx_buf = kmm_malloc(len);
+  if (isotp->tx_buf == NULL)
     {
-      FAR struct iob_s     *iob;
-      FAR struct can_frame *cf;
-      unsigned int          frame_size;
-      uint8_t               dlen = isotp->ll.tx_dl;
-
-      iob = can_iob_timedalloc(false, 0, NULL, NULL);
-      if (iob == NULL)
-        {
-          ret = -EAGAIN;
-          break;
-        }
-
-      /* can_frame and canfd_frame both have data at the same byte offset,
-       * so encode via the classic-frame view, then write the header below.
-       */
-
-      cf  = (FAR struct can_frame *)IOB_DATA(iob);
-      ret = isotp_encode_frame(&enc, cf->data, &dlen);
-      if (ret < 0)
-        {
-          iob_free_chain(iob);
-          break;
-        }
-
-      if (isotp->ll.mtu == CANFD_MTU)
-        {
-          FAR struct canfd_frame *cfd = (FAR struct canfd_frame *)cf;
-
-          cfd->can_id = isotp->tx_id;
-          cfd->len    = dlen;
-          cfd->flags  = CANFD_FDF | (isotp->ll.tx_flags & CANFD_BRS);
-          frame_size  = CANFD_MTU;
-        }
-      else
-        {
-          cf->can_id  = isotp->tx_id;
-          cf->can_dlc = dlen;
-          frame_size  = CAN_MTU;
-        }
-
-      iob->io_len    = frame_size;
-      iob->io_pktlen = frame_size;
-
-      if (iob_tryadd_queue(iob, &isotp->tx_q) < 0)
-        {
-          iob_free_chain(iob);
-          ret = -EAGAIN;
-          break;
-        }
-
-      /* isotp_encode_frame() returns 0 when the message is fully encoded. */
-
-      if (ret == 0)
-        {
-          return OK;
-        }
+      return -ENOMEM;
     }
 
-  iob_free_queue(&isotp->tx_q);
-  IOB_QINIT(&isotp->tx_q);
+  memcpy(isotp->tx_buf, buf, len);
+  isotp->tx_enc.buf = isotp->tx_buf;
+  return OK;
+}
+
+/****************************************************************************
+ * Name: isotp_tx_frame
+ *
+ * Description:
+ *   Encode the next frame of the message into a new IOB.
+ *
+ * Returned Value:
+ *   >0 when more frames follow, 0 for the last one, -ENOMEM when no IOB is
+ *   free, or another negated errno value.
+ *
+ ****************************************************************************/
+
+static int isotp_tx_frame(FAR struct isotp_conn_s *isotp,
+                          FAR struct iob_s **iob_out)
+{
+  FAR struct iob_s     *iob;
+  FAR struct can_frame *cf;
+  unsigned int          frame_size;
+  uint8_t               dlen = isotp->ll.tx_dl;
+  int                   ret;
+
+  iob = can_iob_timedalloc(false, 0, NULL, NULL);
+  if (iob == NULL)
+    {
+      return -ENOMEM;
+    }
+
+  /* can_frame and canfd_frame both have data at the same byte offset,
+   * so encode via the classic-frame view, then write the header below.
+   */
+
+  cf  = (FAR struct can_frame *)IOB_DATA(iob);
+  ret = isotp_encode_frame(&isotp->tx_enc, cf->data, &dlen);
+  if (ret < 0)
+    {
+      iob_free_chain(iob);
+      return ret;
+    }
+
+  if (isotp->ll.mtu == CANFD_MTU)
+    {
+      FAR struct canfd_frame *cfd = (FAR struct canfd_frame *)cf;
+
+      cfd->can_id = isotp->tx_id;
+      cfd->len    = dlen;
+      cfd->flags  = CANFD_FDF | (isotp->ll.tx_flags & CANFD_BRS);
+      frame_size  = CANFD_MTU;
+    }
+  else
+    {
+      cf->can_id  = isotp->tx_id;
+      cf->can_dlc = dlen;
+      frame_size  = CAN_MTU;
+    }
+
+  iob->io_len    = frame_size;
+  iob->io_pktlen = frame_size;
+  *iob_out       = iob;
   return ret;
 }
 
@@ -1203,7 +1223,6 @@ static int isotp_setup(FAR struct socket *psock)
   nxmutex_init(&conn->rx_lock);
   nxsem_init(&conn->tx_sem, 0, 1);
   nxsem_init(&conn->tx_done_sem, 0, 0);
-  IOB_QINIT(&conn->tx_q);
   can_conn_init(&conn->conn);
   psock->s_conn = &conn->conn;
   return OK;
@@ -1486,7 +1505,8 @@ errout_with_lock:
  * Name: isotp_sendmsg
  *
  * Description:
- *   Build the frames (the single copy) and start the event-driven engine.
+ *   Copy the message and start the event-driven engine, which builds each
+ *   frame as it goes out.
  *   WAIT_TX_DONE waits for completion and returns the result; otherwise the
  *   call returns immediately (fire-and-forget).
  *
@@ -1502,7 +1522,7 @@ static ssize_t isotp_sendmsg(FAR struct socket *psock,
   bool                     nonblock;
   int                      ret;
 
-  if (msg == NULL || msg->msg_iovlen != 1)
+  if (msg == NULL || msg->msg_iovlen != 1 || msg->msg_iov->iov_len == 0)
     {
       return -EINVAL;
     }
@@ -1546,13 +1566,13 @@ static ssize_t isotp_sendmsg(FAR struct socket *psock,
       return ret;
     }
 
-  /* Discard any frames left by a prior aborted (N_Bs) transfer, then build
-   * the new ones (caller's buffer still valid) and start the engine.
+  /* Free the copy left by a prior aborted (N_Bs) transfer, copy the new
+   * message and start the engine.
    */
 
-  iob_free_queue(&isotp->tx_q);
+  isotp_tx_free(isotp);
 
-  ret = isotp_tx_enqueue(isotp, buf, len);
+  ret = isotp_tx_prepare(isotp, buf, len);
   if (ret >= 0)
     {
       ret = isotp_tx_start(isotp);
@@ -1560,7 +1580,7 @@ static ssize_t isotp_sendmsg(FAR struct socket *psock,
 
   if (ret < 0)
     {
-      iob_free_queue(&isotp->tx_q);
+      isotp_tx_free(isotp);
       nxsem_post(&isotp->tx_sem);
       return ret;
     }
@@ -1773,7 +1793,7 @@ static int isotp_close(FAR struct socket *psock)
           conn->tx_cb = NULL;
         }
 
-      iob_free_queue(&conn->tx_q);
+      isotp_tx_free(conn);
 
       nxsem_destroy(&conn->tx_sem);
       nxsem_destroy(&conn->tx_done_sem);
