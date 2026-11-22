@@ -200,7 +200,7 @@ reassembled message.
 Segmentation, flow control, and reassembly are handled transparently by the
 kernel. TX waits up to 15000 ms for a Flow Control frame after a First Frame
 (N_Bs); RX waits up to 1000 ms for Consecutive Frames after a First Frame
-(N_Cr).
+(N_Cr). Frames on the RX ID with a reserved PCI type are dropped.
 
 The sender honors every Flow Control the receiver may send. STmin values
 0x00-0x7F are milliseconds and 0xF1-0xF9 are 100-900 us; a reserved value

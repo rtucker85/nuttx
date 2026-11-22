@@ -1404,7 +1404,12 @@ static uint32_t isotp_input(FAR struct can_conn_s *conn,
         break;
 
       default:
-        break;    /* Delivered; the reader's decode rejects it */
+
+        /* Reserved PCI type: drop it, as it belongs to no message. */
+
+        netdev_iob_clear(dev);
+        iob_free_chain(iob);
+        return 0;
     }
 
   flags = can_callback(dev, conn, CAN_NEWDATA);
