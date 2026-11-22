@@ -39,6 +39,10 @@ ifeq ($(CONFIG_AM263X_MCSPI),y)
 CHIP_CSRCS += am263x_spi.c
 endif
 
+ifeq ($(CONFIG_AM263X_QSPI),y)
+CHIP_CSRCS += am263x_qspi.c
+endif
+
 ifeq ($(CONFIG_AM263X_MDIO),y)
 CHIP_CSRCS += am263x_mdio.c
 endif
