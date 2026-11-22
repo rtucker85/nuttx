@@ -44,7 +44,13 @@
 
 /* Pad configuration register offsets (one 32-bit register per pad) */
 
+#define AM263X_PAD_QSPI_CSN0        0x0000  /* QSPI pads: mode 0 */
 #define AM263X_PAD_QSPI_CSN1        0x0004  /* GPIO1 in mode 7 */
+#define AM263X_PAD_QSPI_CLK         0x0008
+#define AM263X_PAD_QSPI_D0          0x000c
+#define AM263X_PAD_QSPI_D1          0x0010
+#define AM263X_PAD_QSPI_D2          0x0014
+#define AM263X_PAD_QSPI_D3          0x0018
 #define AM263X_PAD_SPI0_CS0         0x002c
 #define AM263X_PAD_SPI0_CLK         0x0030
 #define AM263X_PAD_SPI0_D0          0x0034

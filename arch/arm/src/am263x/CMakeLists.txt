@@ -43,6 +43,10 @@ if(CONFIG_AM263X_MCSPI)
   list(APPEND SRCS am263x_spi.c)
 endif()
 
+if(CONFIG_AM263X_QSPI)
+  list(APPEND SRCS am263x_qspi.c)
+endif()
+
 if(CONFIG_AM263X_CPSW)
   list(APPEND SRCS am263x_cpsw.c)
 endif()

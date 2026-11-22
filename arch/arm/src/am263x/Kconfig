@@ -86,6 +86,14 @@ config AM263X_MCSPI4
 	depends on SPI
 	select AM263X_MCSPI
 
+config AM263X_QSPI
+	bool "QSPI0"
+	default n
+	---help---
+		The QSPI controller on its chip select 0, the boot flash, as a
+		NuttX QSPI device (am263x_qspi_initialize()) for a QSPI NOR MTD
+		driver.  Reads go through the memory-mapped flash window.
+
 config AM263X_I2C
 	bool
 	default n

@@ -255,4 +255,26 @@ void am263x_clockconfig(void)
 
   up_udelay(1);
 #endif
+
+  /* QSPI0: DPLL_CORE_HSDIV0_CLKOUT0 (400 MHz) / 5 = 80 MHz, then a module
+   * reset so the driver starts from reset values, not from the SBL's
+   * memory-mapped setup.  Nothing may run from the flash window here.
+   */
+
+#ifdef CONFIG_AM263X_QSPI
+  am263x_set_clock(AM263X_MSS_RCM_QSPI0_CLK_SRC_SEL,
+                   AM263X_MSS_RCM_QSPI0_CLK_DIV_VAL,
+                   AM263X_MSS_RCM_QSPI0_CLK_GATE,
+                   RCM_QSPI_CLKSRC_CORE_HSDIV0_CLKOUT0, RCM_CLK_DIV(5));
+
+  putreg32(RCM_RST_ASSERT, AM263X_MSS_RCM_QSPI0_RST_CTRL);
+  while (getreg32(AM263X_MSS_RCM_QSPI0_RST_CTRL) != RCM_RST_ASSERT)
+    {
+    }
+
+  putreg32(RCM_RST_DEASSERT, AM263X_MSS_RCM_QSPI0_RST_CTRL);
+  while (getreg32(AM263X_MSS_RCM_QSPI0_RST_CTRL) != RCM_RST_DEASSERT)
+    {
+    }
+#endif
 }
