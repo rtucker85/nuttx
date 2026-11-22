@@ -36,7 +36,10 @@
  * Interrupts: the CPDMA's RX and TX pulses.  RX masks its own interrupt
  * and leaves the work to the upper half, which calls receive() until it
  * returns NULL; that re-enables it.  TX completions are handled in the
- * interrupt, and the packets freed later in reclaim().
+ * interrupt, and the packets freed later in reclaim().  The upper half
+ * only calls reclaim() from transmit() or when the TX quota is used up,
+ * so the TX interrupt also queues am263x_cpsw_txwork() to do it: the
+ * packets would otherwise keep up to CPSW_TX_QUOTA IOBs after a burst.
  *
  * The PHY: PHYLIB runs it; a work item follows its link state and sets
  * the MAC's speed and duplex to match.
@@ -155,6 +158,7 @@ struct am263x_cpsw_s
   FAR struct mdio_bus_s *mdio;
   FAR struct phy_device_s *phydev;
   struct work_s linkwork;
+  struct work_s txwork;              /* Reclaims sent packets */
   spinlock_t lock;                   /* TX queue against the interrupt */
 
   bool up;                           /* Between ifup and ifdown */
@@ -185,6 +189,7 @@ static int am263x_cpsw_transmit(FAR struct netdev_lowerhalf_s *dev,
                                 FAR netpkt_t *pkt);
 static FAR netpkt_t *am263x_cpsw_receive(FAR struct netdev_lowerhalf_s *dev);
 static void am263x_cpsw_reclaim(FAR struct netdev_lowerhalf_s *dev);
+static void am263x_cpsw_txwork(FAR void *arg);
 
 /****************************************************************************
  * Private Data
@@ -552,6 +557,12 @@ static int am263x_cpsw_tx_interrupt(int irq, FAR void *context,
   spin_unlock_irqrestore(&priv->lock, flags);
 
   putreg32(CPDMA_EOI_TX, AM263X_CPDMA_EOI_VECTOR);
+
+  if (work_available(&priv->txwork))
+    {
+      work_queue(LPWORK, &priv->txwork, am263x_cpsw_txwork, priv, 0);
+    }
+
   netdev_lower_txdone(&priv->dev);
   return OK;
 }
@@ -740,6 +751,12 @@ static int am263x_cpsw_ifdown(FAR struct netdev_lowerhalf_s *dev)
   up_disable_irq(AM263X_IRQ_CPSW0_RX);
   up_disable_irq(AM263X_IRQ_CPSW0_TX);
 
+  /* ifdown() runs with the device locked: the work, if it has started,
+   * waits for the lock and then finds nothing to free after teardown.
+   */
+
+  work_cancel(LPWORK, &priv->txwork);
+
   am263x_cpsw_teardown(priv);
 
   if (priv->link)
@@ -856,6 +873,25 @@ static void am263x_cpsw_reclaim(FAR struct netdev_lowerhalf_s *dev)
 
       priv->txfree = (priv->txfree + 1) % CPSW_NTXDESC;
     }
+}
+
+/****************************************************************************
+ * Name: am263x_cpsw_txwork
+ *
+ * Description:
+ *   Free the packets of completed TX descriptors after the TX interrupt.
+ *   transmit() and reclaim() run with the device locked, so this takes
+ *   the lock too.
+ *
+ ****************************************************************************/
+
+static void am263x_cpsw_txwork(FAR void *arg)
+{
+  FAR struct am263x_cpsw_s *priv = arg;
+
+  netdev_lock(&priv->dev.netdev);
+  am263x_cpsw_reclaim(&priv->dev);
+  netdev_unlock(&priv->dev.netdev);
 }
 
 /****************************************************************************
