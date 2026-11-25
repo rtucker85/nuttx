@@ -30,9 +30,12 @@
  *
  * On the memory-mapped port the controller turns CPU reads of the flash
  * window at 0x60000000 into read commands (SPI_SETUP0_REG), on one, two
- * or four data lines.  QSPI_MEMORY reads use it; QSPI_COMMAND and
- * QSPI_MEMORY writes use the configuration port.  The window must be
- * Normal memory in the MPU (memcpy() makes unaligned accesses).
+ * or four data lines.  It drives only 23 address bits, so the window
+ * reaches the first 8 MB of the flash and aliases above that.
+ * QSPI_MEMORY reads of the first 8 MB use it; reads above it, writes and
+ * QSPI_COMMAND use the configuration port, whose reads can also use four
+ * data lines.  The window must be Normal memory in the MPU (memcpy()
+ * makes unaligned accesses).
  *
  * The window is mapped non-cacheable: the memory-mapped port does not
  * take cache line fills.  So nothing goes stale when the flash changes.
@@ -77,6 +80,12 @@
  */
 
 #define QSPI_POLL_TIMEOUT     10000000
+
+/* Bytes per configuration-port read frame: 1024 128-bit words, well
+ * inside SPI_CMD_REG.FLEN.
+ */
+
+#define QSPI_CFGREAD_CHUNK    16384
 
 /* Initial SCLK, until the client sets one */
 
@@ -249,14 +258,15 @@ static int qspi_word(FAR struct am263x_qspidev_s *priv,
  * Name: qspi_datawords
  *
  * Description:
- *   The number of words buflen bytes of data take: 32-bit words, then
- *   single bytes for the rest.
+ *   The number of words buflen bytes of data take: 32-bit words written or
+ *   128-bit words read, then single bytes for the rest.
  *
  ****************************************************************************/
 
-static inline uint32_t qspi_datawords(size_t buflen)
+static inline uint32_t qspi_datawords(size_t buflen, bool write)
 {
-  return (buflen >> 2) + (buflen & 3);
+  return write ? (buflen >> 2) + (buflen & 3) :
+                 (buflen >> 4) + (buflen & 15);
 }
 
 /****************************************************************************
@@ -296,31 +306,41 @@ static int qspi_txdata(FAR struct am263x_qspidev_s *priv,
  * Name: qspi_rxdata
  *
  * Description:
- *   Shift buflen bytes in in the current frame, four at a time.
+ *   Shift buflen bytes in in the current frame, sixteen at a time, on one
+ *   line (QSPI_CMD_READ_SINGLE) or four (QSPI_CMD_READ_QUAD).  A 128-bit
+ *   word fills all four data registers, first bits in DATA3's MSBs.
  *
  ****************************************************************************/
 
+static void qspi_rxbytes(FAR uint8_t *buf, uint32_t wd)
+{
+  buf[0] = wd >> 24;
+  buf[1] = wd >> 16;
+  buf[2] = wd >> 8;
+  buf[3] = wd;
+}
+
 static int qspi_rxdata(FAR struct am263x_qspidev_s *priv,
-                       FAR const struct qspi_frame_s *frame,
+                       FAR const struct qspi_frame_s *frame, uint32_t cmd,
                        FAR uint8_t *buf, size_t buflen)
 {
   uint32_t wd;
   int ret = OK;
 
-  while (buflen >= 4 && ret == OK)
+  while (buflen >= 16 && ret == OK)
     {
-      ret = qspi_word(priv, frame, QSPI_CMD_READ_SINGLE, 32, 0, &wd);
-      buf[0] = wd >> 24;
-      buf[1] = wd >> 16;
-      buf[2] = wd >> 8;
-      buf[3] = wd;
-      buf += 4;
-      buflen -= 4;
+      ret = qspi_word(priv, frame, cmd, 128, 0, NULL);
+      qspi_rxbytes(&buf[0], qspi_getreg(priv, AM263X_QSPI_DATA3_OFFSET));
+      qspi_rxbytes(&buf[4], qspi_getreg(priv, AM263X_QSPI_DATA2_OFFSET));
+      qspi_rxbytes(&buf[8], qspi_getreg(priv, AM263X_QSPI_DATA1_OFFSET));
+      qspi_rxbytes(&buf[12], qspi_getreg(priv, AM263X_QSPI_DATA_OFFSET));
+      buf += 16;
+      buflen -= 16;
     }
 
   while (buflen > 0 && ret == OK)
     {
-      ret = qspi_word(priv, frame, QSPI_CMD_READ_SINGLE, 8, 0, &wd);
+      ret = qspi_word(priv, frame, cmd, 8, 0, &wd);
       *buf++ = wd;
       buflen--;
     }
@@ -333,23 +353,27 @@ static int qspi_rxdata(FAR struct am263x_qspidev_s *priv,
  *
  * Description:
  *   One frame on the configuration port: an 8-bit command, an optional
- *   address of addrlen bytes, then buflen bytes written or read.
+ *   address of addrlen bytes, dummies dummy cycles (a word of its own),
+ *   then buflen bytes written or read.  Reads come in on one line, or on
+ *   four with quad set; everything else goes out on one.
  *
  ****************************************************************************/
 
 static int qspi_cfgxfer(FAR struct am263x_qspidev_s *priv, uint8_t cmd,
                         bool address, uint8_t addrlen, uint32_t addr,
-                        bool write, FAR void *buffer, size_t buflen)
+                        uint8_t dummies, bool write, bool quad,
+                        FAR void *buffer, size_t buflen)
 {
   struct qspi_frame_s frame;
   int ret;
 
-  if (address && (addrlen < 1 || addrlen > 4))
+  if ((address && (addrlen < 1 || addrlen > 4)) || dummies > 32)
     {
       return -EINVAL;
     }
 
-  frame.nwords = 1 + (address ? 1 : 0) + qspi_datawords(buflen);
+  frame.nwords = 1 + (address ? 1 : 0) + (dummies > 0 ? 1 : 0) +
+                 qspi_datawords(buflen, write);
   if (frame.nwords > QSPI_CMD_FLEN_MAX)
     {
       return -EINVAL;
@@ -366,6 +390,12 @@ static int qspi_cfgxfer(FAR struct am263x_qspidev_s *priv, uint8_t cmd,
                       addr, NULL);
     }
 
+  if (ret == OK && dummies > 0)
+    {
+      ret = qspi_word(priv, &frame, QSPI_CMD_WRITE_SINGLE, dummies, 0,
+                      NULL);
+    }
+
   if (ret == OK && buflen > 0)
     {
       if (write)
@@ -374,7 +404,10 @@ static int qspi_cfgxfer(FAR struct am263x_qspidev_s *priv, uint8_t cmd,
         }
       else
         {
-          ret = qspi_rxdata(priv, &frame, buffer, buflen);
+          ret = qspi_rxdata(priv, &frame,
+                            quad ? QSPI_CMD_READ_QUAD :
+                                   QSPI_CMD_READ_SINGLE,
+                            buffer, buflen);
         }
     }
 
@@ -426,31 +459,17 @@ static void qspi_copy(FAR uint8_t *dst, uintptr_t src, size_t len)
  * Name: qspi_mmapread
  *
  * Description:
- *   Read through the memory-mapped port: program SPI_SETUP0_REG with the
- *   read command and copy out of the flash window.
+ *   Read len bytes at addr (all inside the flash window) through the
+ *   memory-mapped port: program SPI_SETUP0_REG with the read command and
+ *   copy out of the window.
  *
  ****************************************************************************/
 
 static int qspi_mmapread(FAR struct am263x_qspidev_s *priv,
-                         FAR struct qspi_meminfo_s *meminfo)
+                         FAR const struct qspi_meminfo_s *meminfo,
+                         uint32_t addr, FAR uint8_t *buf, size_t len)
 {
   uint32_t setup;
-
-  if (meminfo->addrlen < 1 || meminfo->addrlen > 4 ||
-      meminfo->addr > AM263X_QSPI_FLASH_SIZE ||
-      meminfo->buflen > AM263X_QSPI_FLASH_SIZE - meminfo->addr)
-    {
-      return -EINVAL;
-    }
-
-  /* The address always goes out on one line; data on one or four */
-
-  if ((meminfo->flags & (QSPIMEM_DUALIO | QSPIMEM_QUADIO | QSPIMEM_IDUAL |
-                         QSPIMEM_IQUAD | QSPIMEM_IOCTAL | QSPIMEM_OCTALIO |
-                         QSPIMEM_DTR | QSPIMEM_SCRAMBLE)) != 0)
-    {
-      return -ENOSYS;
-    }
 
   setup = QSPI_SETUP_RCMD(meminfo->cmd) |
           QSPI_SETUP_NUM_A_BYTES(meminfo->addrlen) |
@@ -486,12 +505,41 @@ static int qspi_mmapread(FAR struct am263x_qspidev_s *priv,
   qspi_cfgport(priv, true);
   UP_DSB();
 
-  qspi_copy(meminfo->buffer, AM263X_QSPI_FLASH_BASE + meminfo->addr,
-            meminfo->buflen);
+  qspi_copy(buf, AM263X_QSPI_FLASH_BASE + addr, len);
 
   UP_DSB();
   qspi_cfgport(priv, false);
   return OK;
+}
+
+/****************************************************************************
+ * Name: qspi_cfgread
+ *
+ * Description:
+ *   Read len bytes at addr through the configuration port, for flash
+ *   beyond the window, in frames that fit in SPI_CMD_REG.FLEN.
+ *
+ ****************************************************************************/
+
+static int qspi_cfgread(FAR struct am263x_qspidev_s *priv,
+                        FAR const struct qspi_meminfo_s *meminfo,
+                        uint32_t addr, FAR uint8_t *buf, size_t len)
+{
+  size_t chunk;
+  int ret = OK;
+
+  while (len > 0 && ret == OK)
+    {
+      chunk = len < QSPI_CFGREAD_CHUNK ? len : QSPI_CFGREAD_CHUNK;
+      ret = qspi_cfgxfer(priv, meminfo->cmd, true, meminfo->addrlen, addr,
+                         meminfo->dummies, false,
+                         QSPIMEM_ISQUADDATA(meminfo->flags), buf, chunk);
+      addr += chunk;
+      buf  += chunk;
+      len  -= chunk;
+    }
+
+  return ret;
 }
 
 /****************************************************************************
@@ -646,16 +694,17 @@ static int qspi_command(FAR struct qspi_dev_s *dev,
 
   return qspi_cfgxfer(priv, cmdinfo->cmd,
                       QSPICMD_ISADDRESS(cmdinfo->flags), cmdinfo->addrlen,
-                      cmdinfo->addr, QSPICMD_ISWRITE(cmdinfo->flags),
-                      cmdinfo->buffer, buflen);
+                      cmdinfo->addr, 0, QSPICMD_ISWRITE(cmdinfo->flags),
+                      false, cmdinfo->buffer, buflen);
 }
 
 /****************************************************************************
  * Name: qspi_memory
  *
  * Description:
- *   Reads go through the memory-mapped port (one or four data lines);
- *   writes are configuration-port frames on one line.
+ *   Reads of the first 8 MB go through the memory-mapped port, the rest
+ *   through the configuration port, on one or four data lines.  Writes
+ *   are configuration-port frames on one line.
  *
  ****************************************************************************/
 
@@ -663,6 +712,11 @@ static int qspi_memory(FAR struct qspi_dev_s *dev,
                        FAR struct qspi_meminfo_s *meminfo)
 {
   FAR struct am263x_qspidev_s *priv = (FAR struct am263x_qspidev_s *)dev;
+  FAR uint8_t *buf;
+  uint32_t addr;
+  size_t len;
+  size_t n;
+  int ret = OK;
 
   DEBUGASSERT(meminfo != NULL && meminfo->buffer != NULL);
 
@@ -679,11 +733,48 @@ static int qspi_memory(FAR struct qspi_dev_s *dev,
         }
 
       return qspi_cfgxfer(priv, meminfo->cmd, true, meminfo->addrlen,
-                          meminfo->addr, true, meminfo->buffer,
+                          meminfo->addr, 0, true, false, meminfo->buffer,
                           meminfo->buflen);
     }
 
-  return qspi_mmapread(priv, meminfo);
+  /* The address always goes out on one line; data on one or four */
+
+  if ((meminfo->flags & (QSPIMEM_DUALIO | QSPIMEM_QUADIO | QSPIMEM_IDUAL |
+                         QSPIMEM_IQUAD | QSPIMEM_IOCTAL | QSPIMEM_OCTALIO |
+                         QSPIMEM_DTR | QSPIMEM_SCRAMBLE)) != 0)
+    {
+      return -ENOSYS;
+    }
+
+  if (meminfo->addrlen < 1 || meminfo->addrlen > 4)
+    {
+      return -EINVAL;
+    }
+
+  addr = meminfo->addr;
+  buf  = meminfo->buffer;
+  len  = meminfo->buflen;
+
+  if (addr < AM263X_QSPI_FLASH_SIZE && len > 0)
+    {
+      n = AM263X_QSPI_FLASH_SIZE - addr;
+      if (n > len)
+        {
+          n = len;
+        }
+
+      ret   = qspi_mmapread(priv, meminfo, addr, buf, n);
+      addr += n;
+      buf  += n;
+      len  -= n;
+    }
+
+  if (ret == OK && len > 0)
+    {
+      ret = qspi_cfgread(priv, meminfo, addr, buf, len);
+    }
+
+  return ret;
 }
 
 /****************************************************************************

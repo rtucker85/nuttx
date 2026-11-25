@@ -33,12 +33,13 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-/* QSPI0 registers and its memory-mapped flash window (32 MB, up to four
- * chip selects; CS0 is the one the ROM and the SBL boot from).
+/* QSPI0 registers and its memory-mapped flash window.  The window port
+ * drives only 23 address bits: it reaches the first 8 MB of the flash,
+ * and the 32 MB from 0x60000000 alias it every 8 MB.
  */
 
 #define AM263X_QSPI0_BASE              0x48200000
-#define AM263X_QSPI_FLASH_SIZE         (32 * 1024 * 1024)
+#define AM263X_QSPI_FLASH_SIZE         (8 * 1024 * 1024)
 
 /* Register offsets.  SPI_SETUPn_REG is the memory-mapped setup for CSn. */
 
