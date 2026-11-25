@@ -65,6 +65,20 @@ int am263x_analog_initialize(void);
 int am263x_ethernet_initialize(void);
 #endif
 
+/****************************************************************************
+ * Name: am263x_qspiflash_initialize
+ *
+ * Description:
+ *   Set up the QSPI NOR boot flash as an MTD device, register its upper
+ *   8 MB as /dev/data and mount it at /data with littlefs (formatting it
+ *   if it does not mount).
+ *
+ ****************************************************************************/
+
+#if defined(CONFIG_AM263X_QSPI) && defined(CONFIG_MTD_S25FLS)
+int am263x_qspiflash_initialize(void);
+#endif
+
 #ifdef CONFIG_AM263X_I2C1
 int am263x_eeprom_initialize(void);
 #  ifdef CONFIG_I2C_EE_24XX
