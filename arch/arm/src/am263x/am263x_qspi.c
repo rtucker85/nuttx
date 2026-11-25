@@ -33,6 +33,9 @@
  * or four data lines.  QSPI_MEMORY reads use it; QSPI_COMMAND and
  * QSPI_MEMORY writes use the configuration port.  The window must be
  * Normal memory in the MPU (memcpy() makes unaligned accesses).
+ *
+ * The window is mapped non-cacheable: the memory-mapped port does not
+ * take cache line fills.  So nothing goes stale when the flash changes.
  */
 
 /****************************************************************************
@@ -90,6 +93,7 @@ struct am263x_qspidev_s
   mutex_t           lock;      /* Held by the bus user (QSPI_LOCK) */
   uint32_t          frequency; /* Requested SCLK */
   uint32_t          actual;    /* SCLK the divider gives */
+  uint32_t          setup;     /* SPI_SETUP0_REG last programmed */
   uint8_t           mode;      /* QSPIDEV_MODEn */
   bool              initialized;
 };
@@ -378,6 +382,47 @@ static int qspi_cfgxfer(FAR struct am263x_qspidev_s *priv, uint8_t cmd,
 }
 
 /****************************************************************************
+ * Name: qspi_copy
+ *
+ * Description:
+ *   Copy out of the flash window.  Each bus access to the window is a
+ *   flash read command of its own, so read it 32 bytes at a time with LDM
+ *   (one burst) rather than with memcpy(), which loads 8 bytes at a time.
+ *
+ ****************************************************************************/
+
+static void qspi_copy(FAR uint8_t *dst, uintptr_t src, size_t len)
+{
+  uint32_t tmp[8];
+
+  /* Bytes up to a 32-byte boundary of the window */
+
+  while ((src & 31) != 0 && len > 0)
+    {
+      *dst++ = *(FAR volatile const uint8_t *)src++;
+      len--;
+    }
+
+  while (len >= 32)
+    {
+      __asm__ __volatile__
+      (
+        "ldmia %[s]!, {r2, r3, r4, r5, r6, r8, r10, r12}\n\t"
+        "stmia %[t], {r2, r3, r4, r5, r6, r8, r10, r12}\n\t"
+        : [s] "+r" (src)
+        : [t] "r" (tmp)
+        : "r2", "r3", "r4", "r5", "r6", "r8", "r10", "r12", "memory"
+      );
+
+      memcpy(dst, tmp, 32);
+      dst += 32;
+      len -= 32;
+    }
+
+  memcpy(dst, (FAR const void *)src, len);
+}
+
+/****************************************************************************
  * Name: qspi_mmapread
  *
  * Description:
@@ -432,13 +477,17 @@ static int qspi_mmapread(FAR struct am263x_qspidev_s *priv,
       return -ETIMEDOUT;
     }
 
-  qspi_putreg(priv, AM263X_QSPI_SETUP_OFFSET(QSPI_CS), setup);
+  if (setup != priv->setup)
+    {
+      qspi_putreg(priv, AM263X_QSPI_SETUP_OFFSET(QSPI_CS), setup);
+      priv->setup = setup;
+    }
+
   qspi_cfgport(priv, true);
   UP_DSB();
 
-  memcpy(meminfo->buffer,
-         (FAR const void *)(AM263X_QSPI_FLASH_BASE + meminfo->addr),
-         meminfo->buflen);
+  qspi_copy(meminfo->buffer, AM263X_QSPI_FLASH_BASE + meminfo->addr,
+            meminfo->buflen);
 
   UP_DSB();
   qspi_cfgport(priv, false);
@@ -684,6 +733,7 @@ static void qspi_hwinit(FAR struct am263x_qspidev_s *priv)
 
   qspi_cfgport(priv, false);
 
+  priv->setup       = 0;
   priv->initialized = false;
   qspi_setmode(&priv->qspi, QSPIDEV_MODE0);
   qspi_setfrequency(&priv->qspi, QSPI_DEFAULT_FREQUENCY);

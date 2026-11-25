@@ -54,7 +54,10 @@
 #define AM263X_MPU_DEVICE        (MPU_RACR_AP_RWRW | MPU_RACR_XN)
 
 /* Normal, non-cacheable (TEX=1, C=0, B=0), execute-never: DMA descriptors,
- * and the QSPI flash window, whose contents change behind the cache.
+ * and the QSPI flash window.  The window cannot be cacheable: the QSPI's
+ * memory-mapped port answers a cache line fill with an external abort
+ * (DFSR 0x1008), at any SCLK and read command.  Uncached loads still go
+ * out as bursts (memcpy() uses LDM).
  */
 
 #define AM263X_MPU_NORMAL_NC     (MPU_RACR_TEX(1) | MPU_RACR_AP_RWRW | \
