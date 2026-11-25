@@ -34,6 +34,10 @@ if(CONFIG_AM263X_MDIO)
   list(APPEND SRCS am263x_ethernet.c)
 endif()
 
+if(CONFIG_AM263X_QSPI AND CONFIG_MTD_S25FLS)
+  list(APPEND SRCS am263x_qspiflash.c)
+endif()
+
 if(CONFIG_AM263X_ADC1 OR CONFIG_AM263X_EPWM)
   list(APPEND SRCS am263x_analog.c)
 endif()

@@ -95,6 +95,14 @@ int am263x_bringup(void)
     }
 #endif
 
+#if defined(CONFIG_AM263X_QSPI) && defined(CONFIG_MTD_S25FLS)
+  ret = am263x_qspiflash_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to initialize QSPI flash: %d\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_AM263X_MDIO
   ret = am263x_ethernet_initialize();
   if (ret < 0)
