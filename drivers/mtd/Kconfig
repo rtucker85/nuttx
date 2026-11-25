@@ -803,6 +803,35 @@ config MX35_SPIFREQUENCY
 
 endif # MTD_MX35
 
+config MTD_S25FLS
+	bool "QuadSPI-based S25FL128S FLASH"
+	default n
+	---help---
+		Cypress (Infineon) S25FL128S QSPI NOR flash, in either sector
+		layout (64 KB sectors with 4 KB parameter sectors, or uniform
+		256 KB sectors).  Reads use the quad output read when the part
+		has CR1.QUAD set, else FAST READ.  The driver does not write
+		the status or configuration registers.
+
+if MTD_S25FLS
+
+config S25FLS_QSPIMODE
+	int "S25FL128S QuadSPI mode"
+	default 0
+	range 0 3
+	---help---
+		The S25FL128S supports SPI modes 0 and 3.
+
+config S25FLS_QSPI_FREQUENCY
+	int "S25FL128S QuadSPI frequency"
+	default 80000000
+	---help---
+		The driver reads with FAST READ or the quad output read, both
+		rated to 104 MHz with the default latency code, and programs
+		and erases with commands rated to 133 MHz.
+
+endif # MTD_S25FLS
+
 config MTD_S25FL1
 	bool "QuadSPI-based S25FL1 FLASH"
 	default n
