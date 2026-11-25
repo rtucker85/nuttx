@@ -29,6 +29,7 @@
 #include <nuttx/config.h>
 
 #include <sys/types.h>
+#include <sys/param.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -56,6 +57,16 @@
 /* Timeout for UART Busy Wait, in milliseconds */
 
 #define UART_TIMEOUT_MS 100
+
+/* Depth of the TX FIFO.  u16550_setup() enables the 16-byte FIFOs; with
+ * CONFIG_16550_SUPRESS_CONFIG they may still be off.
+ */
+
+#ifdef CONFIG_16550_SUPRESS_CONFIG
+#  define UART_TXFIFO_SIZE 1
+#else
+#  define UART_TXFIFO_SIZE 16
+#endif
 
 /* Default getreg/putreg operations */
 
@@ -1596,7 +1607,9 @@ static void u16550_send(struct uart_dev_s *dev, int ch)
  * Name: u16550_sendbuf
  *
  * Description:
- *   This method will send a buffer of bytes on the UART
+ *   This method will send a buffer of bytes on the UART.  It writes only
+ *   what the TX FIFO can take now and returns the number of bytes written;
+ *   it never waits, as it runs in the TX interrupt.
  *
  ****************************************************************************/
 
@@ -1605,9 +1618,16 @@ static ssize_t u16550_sendbuf(struct uart_dev_s *dev,
 {
   size_t i;
 
+  /* THRE set means that the TX FIFO is empty */
+
+  if (!u16550_txready(dev))
+    {
+      return 0;
+    }
+
+  size = MIN(size, UART_TXFIFO_SIZE);
   for (i = 0; i < size; i++)
     {
-      while (!u16550_txready(dev));
       u16550_send(dev, ((const unsigned char *)buffer)[i]);
     }
 
