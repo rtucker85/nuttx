@@ -42,13 +42,24 @@
  * UART to be disabled (MDR1 = 7) while the divisor latches are written.
  * uart_putreg() below does that whenever the driver sets LCR.DLAB, and
  * selects 16x UART mode again when DLAB is cleared.
+ *
+ * In FIFO mode the TI THR interrupt stays pending while the TX FIFO is
+ * below its trigger level, but the driver refills it only when LSR.THRE
+ * shows it empty, so the interrupt would fire again and again until the
+ * FIFO drains.  SCR.TX_EMPTY_CTL_IT makes it fire only when the FIFO and
+ * the shift register are empty, as on a 16550.  uart_putreg() sets it
+ * when the driver sets up the FIFOs.
  */
 
 #define TI_UART_MDR1_OFFSET     0x20
 #define TI_UART_MDR1_16X        0
 #define TI_UART_MDR1_DISABLE    7
 
+#define TI_UART_SCR_OFFSET      0x40
+#define TI_UART_SCR_TXEMPTYIT   (1 << 3)
+
 #define TI_UART_LCR_OFFSET      (UART_LCR_OFFSET * sizeof(uart_datawidth_t))
+#define TI_UART_FCR_OFFSET      (UART_FCR_OFFSET * sizeof(uart_datawidth_t))
 
 /****************************************************************************
  * Public Functions
@@ -82,6 +93,12 @@ void uart_putreg(struct u16550_s *priv, unsigned int offset,
     }
 
   putreg32(value, priv->uartbase + offset);
+
+  if (offset == TI_UART_FCR_OFFSET)
+    {
+      modifyreg32(priv->uartbase + TI_UART_SCR_OFFSET, 0,
+                  TI_UART_SCR_TXEMPTYIT);
+    }
 
   if (offset == TI_UART_LCR_OFFSET &&
       getreg32(mdr1) == TI_UART_MDR1_DISABLE)
