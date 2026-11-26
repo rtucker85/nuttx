@@ -39,12 +39,20 @@ Usage
 
 .. code-block:: console
 
-   grep [-invrHh] <pattern> [<file>...]
+   grep [-EcinqrvwHh] <pattern> [<file>...]
 
 When no ``<file>`` is given, ``grep`` reads from ``stdin``.
 
 Options
 =======
+
+``-E``
+  Use extended regular expressions (``|``, ``+``, ``?``, ``{n,m}`` and
+  ``(...)`` without backslashes).
+
+``-c``
+  Print only the number of matching lines (with ``-v``, of non-matching
+  lines), prefixed by the file name when there is more than one file.
 
 ``-i``
   Case-insensitive match.
@@ -52,8 +60,16 @@ Options
 ``-n``
   Prefix each matching line with its 1-based line number.
 
+``-q``
+  Print nothing; stop at the first match.  Only the exit status tells
+  whether anything matched.
+
 ``-v``
   Invert the match: select lines that do **not** match.
+
+``-w``
+  Match whole words only: the match must not have a letter, digit or
+  underscore on either side.
 
 ``-r``
   Recurse into subdirectories. When set, the file name is always prefixed
@@ -115,6 +131,19 @@ Pipe usage -- filter the output of another NSH command:
 .. code-block:: console
 
    nsh> ps | grep work
+
+Count the matching lines, or only test for a match:
+
+.. code-block:: console
+
+   nsh> dmesg | grep -c -i error
+   nsh> grep -q -w can0 /tmp/log.txt
+
+Extended regular expression alternation:
+
+.. code-block:: console
+
+   nsh> ps | grep -E "hpwork|lpwork"
 
 Notes
 =====
