@@ -58,6 +58,10 @@ if(CONFIG_NCP5623C)
   list(APPEND SRCS ncp5623c.c)
 endif()
 
+if(CONFIG_TPIC2810)
+  list(APPEND SRCS tpic2810.c)
+endif()
+
 if(CONFIG_WS2812)
   list(APPEND SRCS ws2812.c)
 endif()

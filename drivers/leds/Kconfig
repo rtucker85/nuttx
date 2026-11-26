@@ -190,6 +190,21 @@ config NCP5623C
 		Enable support for the onsemi NCP5623C LED driver which can be
 		utilized to drive up to 3 LED's.
 
+config TPIC2810
+	bool "TPIC2810 I2C 8-bit LED driver"
+	default n
+	select I2C
+	select USERLED
+	---help---
+		Enable support for the TI TPIC2810, eight open-drain outputs
+		behind I2C, as a user LED device (/dev/userledsN).
+
+config TPIC2810_I2C_FREQUENCY
+	int "TPIC2810 I2C frequency"
+	default 400000
+	range 1 400000
+	depends on TPIC2810
+
 config WS2812
 	bool "WS2812 LED Driver"
 	default n
