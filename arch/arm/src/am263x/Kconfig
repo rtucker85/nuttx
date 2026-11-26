@@ -86,6 +86,15 @@ config AM263X_MCSPI4
 	depends on SPI
 	select AM263X_MCSPI
 
+config AM263X_GPIO_IRQ
+	bool "GPIO pin interrupts"
+	default n
+	---help---
+		Edge interrupts on GPIO0 pins (am263x_gpio_irq()).  Pins come
+		in banks of 16, and each bank with an interrupt pin takes one
+		of the four GPIO_INT_XBAR outputs of R5FSS0-0 (14-17, VIM
+		142-145), so pins in at most four banks can interrupt.
+
 config AM263X_QSPI
 	bool "QSPI0"
 	default n

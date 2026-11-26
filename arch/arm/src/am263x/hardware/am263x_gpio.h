@@ -46,5 +46,31 @@
 #define AM263X_GPIO_SET_DATA(n)     (0x18 + 0x28 * (n))
 #define AM263X_GPIO_CLR_DATA(n)     (0x1c + 0x28 * (n))
 #define AM263X_GPIO_IN_DATA(n)      (0x20 + 0x28 * (n))
+#define AM263X_GPIO_SET_RIS_TRIG(n) (0x24 + 0x28 * (n))
+#define AM263X_GPIO_CLR_RIS_TRIG(n) (0x28 + 0x28 * (n))
+#define AM263X_GPIO_SET_FAL_TRIG(n) (0x2c + 0x28 * (n))
+#define AM263X_GPIO_CLR_FAL_TRIG(n) (0x30 + 0x28 * (n))
+#define AM263X_GPIO_INTSTAT(n)      (0x34 + 0x28 * (n)) /* write 1 to clear */
+
+/* Interrupts come in banks of 16 pins, half a register set each.  BINTEN
+ * bit b lets bank b's pins raise its bank interrupt.
+ */
+
+#define AM263X_GPIO_BINTEN          0x08
+#define AM263X_GPIO_NBANKS          9
+
+/* GPIO_INT_XBAR: each output picks one of 160 inputs.  Inputs 144-152 are
+ * GPIO0's bank interrupts; outputs 14-17 go to R5FSS0-0's VIM as pulse
+ * interrupts 142-145.
+ */
+
+#define AM263X_GPIO_INTXBAR_MUXCNTL(out) \
+  (AM263X_GPIO_INTXBAR_BASE + 0x04 + 4 * (out))
+#define GPIO_INTXBAR_MUXCNTL_ENABLE (1 << 16)
+#define GPIO_INTXBAR_GPIO0_BANK(b)  (144 + (b))
+
+#define AM263X_GPIO_INTXBAR_FIRST   14  /* R5FSS0-0's outputs */
+#define AM263X_GPIO_INTXBAR_NOUT    4
+#define AM263X_IRQ_GPIO_INTXBAR(out) (142 + (out) - AM263X_GPIO_INTXBAR_FIRST)
 
 #endif /* __ARCH_ARM_SRC_AM263X_HARDWARE_AM263X_GPIO_H */
