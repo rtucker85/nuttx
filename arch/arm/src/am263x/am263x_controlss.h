@@ -52,6 +52,17 @@ void am263x_css_ctrl_modify(uintptr_t addr, uint32_t clrbits,
                             uint32_t setbits);
 
 /****************************************************************************
+ * Name: am263x_top_ctrl_modify
+ *
+ * Description:
+ *   As am263x_css_ctrl_modify(), for a 32-bit TOP_CTRL register.
+ *
+ ****************************************************************************/
+
+void am263x_top_ctrl_modify(uintptr_t addr, uint32_t clrbits,
+                            uint32_t setbits);
+
+/****************************************************************************
  * Name: am263x_top_ctrl_modify16
  *
  * Description:

@@ -277,6 +277,18 @@ config AM263X_LIN4
 	depends on NET_CAN
 	select AM263X_LIN
 
+config AM263X_TSENSE
+	bool "On-die temperature sensors (TSENSE)"
+	default n
+	depends on SENSORS
+	select AM263X_CONTROLSS
+	select SCHED_WORKQUEUE
+	select SCHED_LPWORK
+	---help---
+		The thermal manager's four temperature sensors, calibrated with
+		the factory trims, as a uORB temperature topic carrying the
+		hottest of TSENSE0-2 (am263x_tsense_register()).
+
 endmenu # AM263x Peripheral Selection
 
 menu "AM263x ADC Configuration"
@@ -317,6 +329,38 @@ config AM263X_ADC_INTXBAR
 		AM263X_ADC_INTXBAR + n (R5F interrupt 146 + that).
 
 endmenu # AM263x ADC Configuration
+
+menu "AM263x TSENSE Configuration"
+	depends on AM263X_TSENSE
+
+config AM263X_TSENSE_ALERT
+	bool "Thermal alert interrupts"
+	default n
+	---help---
+		Program the TSENSE0 and TSENSE1 alert thresholds and log when the
+		die goes over the hot one (TSENSE_H/TSENSE_L interrupts), then
+		when it is back under the cold one.  Only an alert: the thermal
+		shutdown warm reset (TSHUT, TOP_RCM.WARM_RESET_CONFIG) is left
+		as the eFuses and the boot loader set it.
+
+if AM263X_TSENSE_ALERT
+
+config AM263X_TSENSE_ALERT_HOT
+	int "Hot alert (degC)"
+	default 125
+	range -40 150
+
+config AM263X_TSENSE_ALERT_COLD
+	int "Back to normal under (degC)"
+	default 115
+	range -40 150
+	---help---
+		Below AM263X_TSENSE_ALERT_HOT, by a few codes (2 degC each) or
+		more, so that one alert does not chatter.
+
+endif # AM263X_TSENSE_ALERT
+
+endmenu # AM263x TSENSE Configuration
 
 menu "AM263x MCAN Configuration"
 	depends on AM263X_MCAN

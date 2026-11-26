@@ -71,6 +71,10 @@ if(CONFIG_AM263X_MCAN)
   list(APPEND SRCS am263x_mcan.c)
 endif()
 
+if(CONFIG_AM263X_TSENSE)
+  list(APPEND SRCS am263x_tsense.c)
+endif()
+
 if(CONFIG_AM263X_LIN)
   list(APPEND SRCS am263x_lin.c)
 endif()
