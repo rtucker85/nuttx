@@ -181,21 +181,128 @@ static const struct file_operations g_drv8145_fops =
   .ioctl = drv8145_ioctl,
 };
 
-/* CONFIG1-4 when the board gives none: the reset values with DRVOFF_SEL
- * OR, so that S_DRVOFF turns the bridge off whatever the DRVOFF pin does.
+/* CONFIG1-4 when the board gives none, from Kconfig (whose defaults are
+ * the reset values with DRVOFF_SEL OR, so that S_DRVOFF turns the bridge
+ * off whatever the DRVOFF pin does).
  */
 
-static const struct drv8145_config_s g_drv8145_default =
+static const struct drv8145_params_s g_drv8145_default =
 {
-  DRV8145_CONFIG1_RESET,
-  DRV8145_CONFIG2_RESET,
-  DRV8145_CONFIG3_RESET,
-  DRV8145_CONFIG4_RESET & ~DRV8145_CFG4_DRVOFF_AND
+  .slew       = CONFIG_MOTOR_DRV8145_SR,
+  .itrip      = CONFIG_MOTOR_DRV8145_ITRIP,
+  .toff       = CONFIG_MOTOR_DRV8145_TOFF,
+  .ocp        = CONFIG_MOTOR_DRV8145_OCP,
+  .tocp       = CONFIG_MOTOR_DRV8145_TOCP,
+  .vmov       = CONFIG_MOTOR_DRV8145_VMOV,
+#ifdef CONFIG_MOTOR_DRV8145_LOAD_VM
+  .load       = DRV8145_LOAD_VM,
+#endif
+#ifdef CONFIG_MOTOR_DRV8145_OLP
+  .olp        = 1,
+#endif
+#ifdef CONFIG_MOTOR_DRV8145_OLA
+  .ola        = 1,
+#endif
+#ifdef CONFIG_MOTOR_DRV8145_SSC
+  .ssc        = 1,
+#endif
+#ifdef CONFIG_MOTOR_DRV8145_OCP_RETRY
+  .ocp_retry  = 1,
+#endif
+#ifdef CONFIG_MOTOR_DRV8145_TSD_RETRY
+  .tsd_retry  = 1,
+#endif
+#ifdef CONFIG_MOTOR_DRV8145_VMOV_RETRY
+  .vmov_retry = 1,
+#endif
+#ifdef CONFIG_MOTOR_DRV8145_OLA_RETRY
+  .ola_retry  = 1,
+#endif
 };
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
+
+/****************************************************************************
+ * Name: drv8145_tocfg
+ *
+ * Description:
+ *   Named settings to CONFIG1-4.  The SPARE bits are kept from cfg.
+ *
+ * Returned Value:
+ *   Zero (OK), or -EINVAL if a setting is out of range.
+ *
+ ****************************************************************************/
+
+static int drv8145_tocfg(FAR const struct drv8145_params_s *p,
+                         FAR struct drv8145_config_s *cfg)
+{
+  if (p->slew >= DRV8145_SR_COUNT || p->itrip >= DRV8145_ITRIP_COUNT ||
+      p->toff > DRV8145_TOFF_50US || p->ocp > DRV8145_OCP_75 ||
+      p->tocp > DRV8145_TOCP_MIN || p->vmov > DRV8145_VMOV_OFF ||
+      p->load > DRV8145_LOAD_VM || p->olp > 1 || p->ola > 1 ||
+      p->ssc > 1 || p->ocp_retry > 1 || p->tsd_retry > 1 ||
+      p->vmov_retry > 1 || p->ola_retry > 1 || p->drvoff_and > 1 ||
+      p->in_and > 1)
+    {
+      return -EINVAL;
+    }
+
+  cfg->config1 = (p->ola ? DRV8145_CFG1_EN_OLA : 0) |
+                 (p->vmov << DRV8145_CFG1_VMOV_SHIFT) |
+                 (p->ssc ? 0 : DRV8145_CFG1_SSC_DIS) |
+                 (p->ocp_retry ? DRV8145_CFG1_OCP_RETRY : 0) |
+                 (p->tsd_retry ? DRV8145_CFG1_TSD_RETRY : 0) |
+                 (p->vmov_retry ? DRV8145_CFG1_VMOV_RETRY : 0) |
+                 (p->ola_retry ? DRV8145_CFG1_OLA_RETRY : 0);
+  cfg->config2 = (cfg->config2 & DRV8145_CFG2_SPARE) |
+                 (((p->load << 1) | p->olp) << DRV8145_CFG2_DIAG_SHIFT) |
+                 (p->itrip << DRV8145_CFG2_ITRIP_SHIFT);
+  cfg->config3 = (cfg->config3 & DRV8145_CFG3_SPARE_MASK) |
+                 (p->toff << DRV8145_CFG3_TOFF_SHIFT) |
+                 (p->slew << DRV8145_CFG3_SR_SHIFT);
+  cfg->config4 = (cfg->config4 & DRV8145_CFG4_SPARE) |
+                 (p->tocp << DRV8145_CFG4_TOCP_SHIFT) |
+                 (p->ocp << DRV8145_CFG4_OCP_SHIFT) |
+                 (p->drvoff_and ? DRV8145_CFG4_DRVOFF_AND : 0) |
+                 (p->in_and ? DRV8145_CFG4_IN_AND : 0);
+  return OK;
+}
+
+/****************************************************************************
+ * Name: drv8145_fromcfg
+ ****************************************************************************/
+
+static void drv8145_fromcfg(FAR const struct drv8145_config_s *cfg,
+                            FAR struct drv8145_params_s *p)
+{
+  uint8_t diag = (cfg->config2 & DRV8145_CFG2_DIAG_MASK) >>
+                 DRV8145_CFG2_DIAG_SHIFT;
+
+  p->ola        = (cfg->config1 & DRV8145_CFG1_EN_OLA) != 0;
+  p->vmov       = (cfg->config1 & DRV8145_CFG1_VMOV_MASK) >>
+                  DRV8145_CFG1_VMOV_SHIFT;
+  p->ssc        = (cfg->config1 & DRV8145_CFG1_SSC_DIS) == 0;
+  p->ocp_retry  = (cfg->config1 & DRV8145_CFG1_OCP_RETRY) != 0;
+  p->tsd_retry  = (cfg->config1 & DRV8145_CFG1_TSD_RETRY) != 0;
+  p->vmov_retry = (cfg->config1 & DRV8145_CFG1_VMOV_RETRY) != 0;
+  p->ola_retry  = (cfg->config1 & DRV8145_CFG1_OLA_RETRY) != 0;
+  p->load       = diag >> 1;
+  p->olp        = diag & 1;
+  p->itrip      = (cfg->config2 & DRV8145_CFG2_ITRIP_MASK) >>
+                  DRV8145_CFG2_ITRIP_SHIFT;
+  p->toff       = (cfg->config3 & DRV8145_CFG3_TOFF_MASK) >>
+                  DRV8145_CFG3_TOFF_SHIFT;
+  p->slew       = (cfg->config3 & DRV8145_CFG3_SR_MASK) >>
+                  DRV8145_CFG3_SR_SHIFT;
+  p->tocp       = (cfg->config4 & DRV8145_CFG4_TOCP_MASK) >>
+                  DRV8145_CFG4_TOCP_SHIFT;
+  p->ocp        = (cfg->config4 & DRV8145_CFG4_OCP_MASK) >>
+                  DRV8145_CFG4_OCP_SHIFT;
+  p->drvoff_and = (cfg->config4 & DRV8145_CFG4_DRVOFF_AND) != 0;
+  p->in_and     = (cfg->config4 & DRV8145_CFG4_IN_AND) != 0;
+}
 
 /****************************************************************************
  * Name: drv8145_frame
@@ -1117,6 +1224,61 @@ static int drv8145_sleep(FAR struct drv8145_chain_s *chain, bool sleep)
 }
 
 /****************************************************************************
+ * Name: drv8145_getconfig
+ ****************************************************************************/
+
+static int drv8145_getconfig(FAR struct drv8145_dev_s *dev,
+                             FAR struct drv8145_config_s *config)
+{
+  int ret;
+
+  ret = drv8145_read(dev, DRV8145_CONFIG1, &config->config1);
+  if (ret >= 0)
+    {
+      ret = drv8145_read(dev, DRV8145_CONFIG2, &config->config2);
+    }
+
+  if (ret >= 0)
+    {
+      ret = drv8145_read(dev, DRV8145_CONFIG3, &config->config3);
+    }
+
+  if (ret >= 0)
+    {
+      ret = drv8145_read(dev, DRV8145_CONFIG4, &config->config4);
+    }
+
+  return ret;
+}
+
+/****************************************************************************
+ * Name: drv8145_setconfig
+ *
+ * Description:
+ *   Write, check and lock CONFIG1-4 of one device, and keep them for any
+ *   later set-up.  DRVOFF_SEL and IN_SEL change what SPI_IN has to be, so
+ *   the output is applied again.
+ *
+ ****************************************************************************/
+
+static int drv8145_setconfig(FAR struct drv8145_dev_s *dev,
+                             FAR const struct drv8145_config_s *config)
+{
+  struct drv8145_output_s output;
+  int ret;
+
+  dev->config = *config;
+  ret = drv8145_configure(dev->chain, (uint64_t)1 << dev->index);
+  if (ret >= 0)
+    {
+      output = dev->output;
+      ret = drv8145_setoutput(dev, &output);
+    }
+
+  return ret;
+}
+
+/****************************************************************************
  * Name: drv8145_open
  ****************************************************************************/
 
@@ -1227,27 +1389,7 @@ static int drv8145_ioctl(FAR struct file *filep, int cmd,
           FAR struct drv8145_config_s *config =
             (FAR struct drv8145_config_s *)((uintptr_t)arg);
 
-          if (config == NULL)
-            {
-              ret = -EINVAL;
-              break;
-            }
-
-          ret = drv8145_read(dev, DRV8145_CONFIG1, &config->config1);
-          if (ret >= 0)
-            {
-              ret = drv8145_read(dev, DRV8145_CONFIG2, &config->config2);
-            }
-
-          if (ret >= 0)
-            {
-              ret = drv8145_read(dev, DRV8145_CONFIG3, &config->config3);
-            }
-
-          if (ret >= 0)
-            {
-              ret = drv8145_read(dev, DRV8145_CONFIG4, &config->config4);
-            }
+          ret = config != NULL ? drv8145_getconfig(dev, config) : -EINVAL;
         }
         break;
 
@@ -1255,23 +1397,41 @@ static int drv8145_ioctl(FAR struct file *filep, int cmd,
         {
           FAR const struct drv8145_config_s *config =
             (FAR const struct drv8145_config_s *)((uintptr_t)arg);
-          struct drv8145_output_s output;
 
-          if (config == NULL)
+          ret = config != NULL ? drv8145_setconfig(dev, config) : -EINVAL;
+        }
+        break;
+
+      case DRV8145IOC_GETPARAMS:
+        {
+          FAR struct drv8145_params_s *params =
+            (FAR struct drv8145_params_s *)((uintptr_t)arg);
+          struct drv8145_config_s config;
+
+          if (params == NULL)
             {
               ret = -EINVAL;
               break;
             }
 
-          dev->config = *config;
-          ret = drv8145_configure(chain, (uint64_t)1 << dev->index);
-
-          /* DRVOFF_SEL and IN_SEL change what SPI_IN has to be */
-
+          ret = drv8145_getconfig(dev, &config);
           if (ret >= 0)
             {
-              output = dev->output;
-              ret = drv8145_setoutput(dev, &output);
+              drv8145_fromcfg(&config, params);
+            }
+        }
+        break;
+
+      case DRV8145IOC_SETPARAMS:
+        {
+          FAR const struct drv8145_params_s *params =
+            (FAR const struct drv8145_params_s *)((uintptr_t)arg);
+          struct drv8145_config_s config = dev->config;
+
+          ret = params != NULL ? drv8145_tocfg(params, &config) : -EINVAL;
+          if (ret >= 0)
+            {
+              ret = drv8145_setconfig(dev, &config);
             }
         }
         break;
@@ -1404,8 +1564,14 @@ int drv8145_register(FAR struct spi_dev_s *spi, uint32_t devid,
     {
       chain->dev[i].chain  = chain;
       chain->dev[i].index  = i;
-      chain->dev[i].config = board->config != NULL ? board->config[i] :
-                                                     g_drv8145_default;
+      if (board->config == NULL)
+        {
+          drv8145_tocfg(&g_drv8145_default, &chain->dev[i].config);
+        }
+      else
+        {
+          chain->dev[i].config = board->config[i];
+        }
     }
 
   ret = drv8145_setup(chain);
