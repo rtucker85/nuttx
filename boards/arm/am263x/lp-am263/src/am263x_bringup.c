@@ -33,9 +33,14 @@
 #include <nuttx/leds/userled.h>
 
 #include "lp-am263.h"
+#include "am263x_systemreset.h"
 
 #ifdef CONFIG_AM263X_PRU
 #  include "am263x_pru.h"
+#endif
+
+#ifdef CONFIG_AM263X_TSENSE
+#  include "am263x_tsense.h"
 #endif
 
 /****************************************************************************
@@ -50,11 +55,24 @@ int am263x_bringup(void)
 {
   int ret = OK;
 
+  /* First, so that a thermal shutdown or watchdog reset is in the log */
+
+  am263x_reset_report();
+
 #ifdef CONFIG_FS_PROCFS
   ret = nx_mount(NULL, "/proc", "procfs", 0, NULL);
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: Failed to mount procfs at /proc: %d\n", ret);
+    }
+#endif
+
+#ifdef CONFIG_AM263X_TSENSE
+  ret = am263x_tsense_register(0);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to register the die temperature: "
+             "%d\n", ret);
     }
 #endif
 
