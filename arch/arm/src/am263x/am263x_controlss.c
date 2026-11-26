@@ -82,6 +82,24 @@ void am263x_top_ctrl_modify16(uintptr_t addr, uint16_t clrbits,
 }
 
 /****************************************************************************
+ * Name: am263x_top_ctrl_modify
+ ****************************************************************************/
+
+void am263x_top_ctrl_modify(uintptr_t addr, uint32_t clrbits,
+                            uint32_t setbits)
+{
+  irqstate_t flags = spin_lock_irqsave(&g_controlss_lock);
+
+  putreg32(AM263X_KICK0_UNLOCK, AM263X_TOP_CTRL_LOCK0_KICK0);
+  putreg32(AM263X_KICK1_UNLOCK, AM263X_TOP_CTRL_LOCK0_KICK1);
+  modifyreg32(addr, clrbits, setbits);
+  putreg32(AM263X_KICK_LOCK, AM263X_TOP_CTRL_LOCK0_KICK0);
+  putreg32(AM263X_KICK_LOCK, AM263X_TOP_CTRL_LOCK0_KICK1);
+
+  spin_unlock_irqrestore(&g_controlss_lock, flags);
+}
+
+/****************************************************************************
  * Name: am263x_intxbar_select
  ****************************************************************************/
 

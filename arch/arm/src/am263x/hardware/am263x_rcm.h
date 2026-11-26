@@ -126,15 +126,42 @@
  */
 
 #define AM263X_TOP_RCM_WARM_RESET_REQ_OFFSET 0x0008
+#define AM263X_TOP_RCM_WARM_RST_CAUSE_OFFSET 0x000c
+#define AM263X_TOP_RCM_WARM_RST_CAUSE_CLR_OFFSET 0x0010
 #define AM263X_TOP_RCM_LOCK0_KICK0_OFFSET    0x1008
 #define AM263X_TOP_RCM_LOCK0_KICK1_OFFSET    0x100c
 
 #define AM263X_TOP_RCM_WARM_RESET_REQ \
   (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_WARM_RESET_REQ_OFFSET)
+#define AM263X_TOP_RCM_WARM_RST_CAUSE \
+  (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_WARM_RST_CAUSE_OFFSET)
+#define AM263X_TOP_RCM_WARM_RST_CAUSE_CLR \
+  (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_WARM_RST_CAUSE_CLR_OFFSET)
 #define AM263X_TOP_RCM_LOCK0_KICK0 \
   (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_LOCK0_KICK0_OFFSET)
 #define AM263X_TOP_RCM_LOCK0_KICK1 \
   (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_LOCK0_KICK1_OFFSET)
+
+/* TOP_RCM.WARM_RST_CAUSE: one bit per source, kept until cleared (write
+ * 0x7 to WARM_RST_CAUSE_CLR) or a power-on reset.  WDT(n) is MSS WDTn,
+ * SW is WARM_RESET_REQ.  Bit 6 is set with every cause; alone it is the
+ * WARMRSTn pin.
+ */
+
+#define TOP_RCM_RST_CAUSE_POR              (1 << 0)
+#define TOP_RCM_RST_CAUSE_WDT(n)           (1 << (1 + (n)))
+#define TOP_RCM_RST_CAUSE_SW               (1 << 5)
+#define TOP_RCM_RST_CAUSE_WARM             (1 << 6)
+#define TOP_RCM_RST_CAUSE_HSM_WDT          (1 << 7)
+#define TOP_RCM_RST_CAUSE_DEBUG            (1 << 8)
+#define TOP_RCM_RST_CAUSE_TSENSE0          (1 << 9)
+#define TOP_RCM_RST_CAUSE_TSENSE1          (1 << 10)
+#define TOP_RCM_RST_CAUSE_MASK             0xfff
+#define TOP_RCM_RST_CAUSE_CLEAR            0x7
+
+/* MSS_RCM: the gate of the thermal manager's 32 kHz clock */
+
+#define AM263X_MSS_RCM_TEMPSENSE_32K_CLK_GATE (AM263X_MSS_RCM_BASE + 0x03b4)
 
 /* Peripheral clock source selectors.  The 3-bit selector is repeated in
  * three nibbles; the value differs per peripheral group.
