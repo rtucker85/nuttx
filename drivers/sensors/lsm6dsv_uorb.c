@@ -22,7 +22,8 @@
 
 /* STMicroelectronics LSM6DSV 6-axis IMU on SPI, as uORB sensor_accel and
  * sensor_gyro topics.  On the LSM6DSV320X the high-g accelerometer is a
- * second sensor_accel topic.
+ * second sensor_accel topic, and the SFLP sensor fusion's game rotation
+ * vector a sensor_rotation topic.
  *
  * All sensors run at their requested rates and are batched into the
  * device FIFO.  A kernel thread drains the FIFO every
@@ -67,6 +68,7 @@
 
 /* Registers */
 
+#define LSM6DSV_FUNC_CFG_ACCESS 0x01
 #define LSM6DSV_IF_CFG          0x03
 #define LSM6DSV_FIFO_CTRL3      0x09
 #define LSM6DSV_FIFO_CTRL4      0x0a
@@ -80,10 +82,32 @@
 #define LSM6DSV_FIFO_STATUS1    0x1b
 #define LSM6DSV_OUT_TEMP_L      0x20
 #define LSM6DSV_CTRL1_XL_HG     0x4e  /* LSM6DSV320X high-g FS and ODR */
+
+/* Embedded functions bank (FUNC_CFG_ACCESS.EMB_FUNC_REG_ACCESS) */
+
+#define LSM6DSV_EMB_FUNC_EN_A   0x04
+#define LSM6DSV_EMB_FIFO_EN_A   0x44
+#define LSM6DSV_SFLP_ODR        0x5e
+#define LSM6DSV_EMB_FUNC_INIT_A 0x66
 #define LSM6DSV_FIFO_DATA_TAG   0x78
 
 #define LSM6DSV_ID              0x70
 #define LSM6DSV320X_ID          0x73  /* Same core, plus a high-g accel */
+
+/* FUNC_CFG_ACCESS */
+
+#define FUNC_CFG_EMB_FUNC_REG_ACCESS (1 << 7)
+
+/* EMB_FUNC_EN_A, EMB_FUNC_FIFO_EN_A and EMB_FUNC_INIT_A: the SFLP game
+ * rotation vector's enable, FIFO batching and reset
+ */
+
+#define EMB_SFLP_GAME           (1 << 1)
+
+/* SFLP_ODR.SFLP_GAME_ODR, bits 5:3: 15 Hz doubling up to 480 Hz */
+
+#define SFLP_ODR_SHIFT          3
+#define SFLP_ODR_MASK           (7 << SFLP_ODR_SHIFT)
 
 /* IF_CFG */
 
@@ -119,6 +143,7 @@
 #define FIFO_TAG_GY             0x01
 #define FIFO_TAG_XL             0x02
 #define FIFO_TAG_XL_HG          0x1d
+#define FIFO_TAG_SFLP_GAME      0x13  /* Two words: X, Y then Z, W */
 
 /* Output data rates, CTRL1/CTRL2.ODR and FIFO_CTRL3.BDR codes 0x2..0xc:
  * 7.5 Hz doubling up to 7.68 kHz.
@@ -134,6 +159,13 @@
 
 #define LSM6DSV_HG_ODR_FIRST    0x08
 #define LSM6DSV_HG_ODR_OFFSET   5      /* CTRL1 code - ODR_XL_HG code */
+
+/* SFLP runs at 15 Hz to 480 Hz, SFLP_GAME_ODR codes 0..5, kept as the
+ * matching CTRL1 code, 0x3..0x8.
+ */
+
+#define LSM6DSV_SFLP_ODR_FIRST  0x03
+#define LSM6DSV_SFLP_ODR_LAST   0x08
 
 /* SPI: read is address | 0x80; mode 3 */
 
@@ -158,6 +190,7 @@ enum lsm6dsv_idx_e
   LSM6DSV_ACCEL_IDX = 0,
   LSM6DSV_GYRO_IDX,
   LSM6DSV_ACCEL_HG_IDX,            /* LSM6DSV320X only */
+  LSM6DSV_ROT_IDX,                 /* LSM6DSV320X only: SFLP */
   LSM6DSV_MAX_IDX
 };
 
@@ -185,6 +218,10 @@ struct lsm6dsv_dev_s
   bool                      overrun;   /* FIFO overrun already reported */
   uint8_t                   id;        /* WHO_AM_I */
   int                       hgdevno;   /* High-g topic, or -1 if none */
+  int                       rotdevno;  /* SFLP topic, or -1 if none */
+  bool                      sflp;      /* SFLP running */
+  bool                      half;      /* quat[0..1] hold a first word */
+  float                     quat[2];   /* SFLP X and Y awaiting Z and W */
   uint8_t                   words[LSM6DSV_FIFO_WORDS][LSM6DSV_WORD_SIZE];
 };
 
@@ -318,6 +355,33 @@ static void lsm6dsv_putreg(FAR struct lsm6dsv_dev_s *priv, uint8_t reg,
 }
 
 /****************************************************************************
+ * Name: lsm6dsv_odr_range
+ *
+ * Description:
+ *   The sensor's slowest and fastest ODR codes.
+ *
+ ****************************************************************************/
+
+static void lsm6dsv_odr_range(FAR struct lsm6dsv_sensor_s *sensor,
+                              FAR uint8_t *first, FAR uint8_t *last)
+{
+  FAR struct lsm6dsv_dev_s *priv = sensor->dev;
+
+  *first = LSM6DSV_ODR_FIRST;
+  *last  = LSM6DSV_ODR_LAST;
+
+  if (sensor == &priv->sensor[LSM6DSV_ACCEL_HG_IDX])
+    {
+      *first = LSM6DSV_HG_ODR_FIRST;
+    }
+  else if (sensor == &priv->sensor[LSM6DSV_ROT_IDX])
+    {
+      *first = LSM6DSV_SFLP_ODR_FIRST;
+      *last  = LSM6DSV_SFLP_ODR_LAST;
+    }
+}
+
+/****************************************************************************
  * Name: lsm6dsv_odr
  *
  * Description:
@@ -329,12 +393,12 @@ static void lsm6dsv_putreg(FAR struct lsm6dsv_dev_s *priv, uint8_t reg,
 static uint8_t lsm6dsv_odr(FAR struct lsm6dsv_sensor_s *sensor,
                            uint32_t period_us)
 {
-  FAR struct lsm6dsv_dev_s *priv = sensor->dev;
+  uint8_t first;
+  uint8_t last;
   uint8_t odr;
 
-  odr = sensor == &priv->sensor[LSM6DSV_ACCEL_HG_IDX] ?
-        LSM6DSV_HG_ODR_FIRST : LSM6DSV_ODR_FIRST;
-  for (; odr < LSM6DSV_ODR_LAST; odr++)
+  lsm6dsv_odr_range(sensor, &first, &last);
+  for (odr = first; odr < last; odr++)
     {
       if (LSM6DSV_ODR_PERIOD(odr) <= period_us)
         {
@@ -388,12 +452,55 @@ static void lsm6dsv_put_hg(FAR struct lsm6dsv_dev_s *priv)
 }
 
 /****************************************************************************
+ * Name: lsm6dsv_put_sflp
+ *
+ * Description:
+ *   Start, retune or stop the SFLP game rotation vector and its FIFO
+ *   batching.  It is reset when it starts.  The embedded functions bank is
+ *   switched in for this, so the caller holds priv->lock, which the FIFO
+ *   reader also takes.
+ *
+ ****************************************************************************/
+
+static void lsm6dsv_put_sflp(FAR struct lsm6dsv_dev_s *priv)
+{
+  FAR struct lsm6dsv_sensor_s *rot = &priv->sensor[LSM6DSV_ROT_IDX];
+  uint8_t mask = rot->enabled ? EMB_SFLP_GAME : 0;
+  uint8_t val;
+
+  lsm6dsv_putreg(priv, LSM6DSV_FUNC_CFG_ACCESS,
+                 FUNC_CFG_EMB_FUNC_REG_ACCESS);
+
+  if (rot->enabled)
+    {
+      val  = lsm6dsv_getreg(priv, LSM6DSV_SFLP_ODR) & ~SFLP_ODR_MASK;
+      val |= (rot->odr - LSM6DSV_SFLP_ODR_FIRST) << SFLP_ODR_SHIFT;
+      lsm6dsv_putreg(priv, LSM6DSV_SFLP_ODR, val);
+    }
+
+  val = lsm6dsv_getreg(priv, LSM6DSV_EMB_FUNC_EN_A) & ~EMB_SFLP_GAME;
+  lsm6dsv_putreg(priv, LSM6DSV_EMB_FUNC_EN_A, val | mask);
+  val = lsm6dsv_getreg(priv, LSM6DSV_EMB_FIFO_EN_A) & ~EMB_SFLP_GAME;
+  lsm6dsv_putreg(priv, LSM6DSV_EMB_FIFO_EN_A, val | mask);
+
+  if (rot->enabled && !priv->sflp)
+    {
+      lsm6dsv_putreg(priv, LSM6DSV_EMB_FUNC_INIT_A, EMB_SFLP_GAME);
+      priv->half = false;
+    }
+
+  lsm6dsv_putreg(priv, LSM6DSV_FUNC_CFG_ACCESS, 0);
+  priv->sflp = rot->enabled;
+}
+
+/****************************************************************************
  * Name: lsm6dsv_apply
  *
  * Description:
  *   Write the ODR and FIFO batching of every sensor, and switch the FIFO
  *   to stream mode while any runs, or bypass (empty) when none does.
- *   Called with priv->lock held.
+ *   SFLP needs the accelerometer and gyroscope running at least at its
+ *   rate, whether or not their topics are.  Called with priv->lock held.
  *
  ****************************************************************************/
 
@@ -402,14 +509,23 @@ static void lsm6dsv_apply(FAR struct lsm6dsv_dev_s *priv)
   FAR struct lsm6dsv_sensor_s *accel = &priv->sensor[LSM6DSV_ACCEL_IDX];
   FAR struct lsm6dsv_sensor_s *gyro = &priv->sensor[LSM6DSV_GYRO_IDX];
   FAR struct lsm6dsv_sensor_s *hg = &priv->sensor[LSM6DSV_ACCEL_HG_IDX];
+  FAR struct lsm6dsv_sensor_s *rot = &priv->sensor[LSM6DSV_ROT_IDX];
   uint8_t xl = accel->enabled ? accel->odr : 0;
   uint8_t gy = gyro->enabled ? gyro->odr : 0;
+  uint8_t sflp = rot->enabled ? rot->odr : 0;
 
-  /* High-performance mode (OP_MODE 0) at the ODR, or off */
+  /* High-performance mode (OP_MODE 0) at the ODR, or off.  The FIFO
+   * batches each at its topic's rate.
+   */
 
-  lsm6dsv_putreg(priv, LSM6DSV_CTRL1, xl);
-  lsm6dsv_putreg(priv, LSM6DSV_CTRL2, gy);
+  lsm6dsv_putreg(priv, LSM6DSV_CTRL1, MAX(xl, sflp));
+  lsm6dsv_putreg(priv, LSM6DSV_CTRL2, MAX(gy, sflp));
   lsm6dsv_putreg(priv, LSM6DSV_FIFO_CTRL3, (gy << 4) | xl);
+
+  if (priv->rotdevno >= 0 && (rot->enabled || priv->sflp))
+    {
+      lsm6dsv_put_sflp(priv);
+    }
 
   if (priv->hgdevno >= 0)
     {
@@ -565,17 +681,17 @@ static int lsm6dsv_get_info(FAR struct sensor_lowerhalf_s *lower,
                             FAR struct sensor_device_info_s *info)
 {
   FAR struct lsm6dsv_sensor_s *sensor = (FAR struct lsm6dsv_sensor_s *)lower;
-  FAR struct lsm6dsv_dev_s *priv = sensor->dev;
+  uint8_t first;
+  uint8_t last;
 
   memset(info, 0, sizeof(*info));
   info->version    = 1;
   info->power      = sensor_data_ftof(0.65f); /* mA, both in HP mode */
   info->max_range  = sensor->range;
   info->resolution = sensor->scale;
-  info->min_delay  = LSM6DSV_ODR_PERIOD(LSM6DSV_ODR_LAST);
-  info->max_delay  = LSM6DSV_ODR_PERIOD(
-                       sensor == &priv->sensor[LSM6DSV_ACCEL_HG_IDX] ?
-                       LSM6DSV_HG_ODR_FIRST : LSM6DSV_ODR_FIRST);
+  lsm6dsv_odr_range(sensor, &first, &last);
+  info->min_delay  = LSM6DSV_ODR_PERIOD(last);
+  info->max_delay  = LSM6DSV_ODR_PERIOD(first);
   strlcpy(info->name, sensor->dev->id == LSM6DSV320X_ID ?
           "LSM6DSV320X" : "LSM6DSV", sizeof(info->name));
   strlcpy(info->vendor, "STMicroelectronics", sizeof(info->vendor));
@@ -602,6 +718,11 @@ static int lsm6dsv_control(FAR struct sensor_lowerhalf_s *lower,
   switch (cmd)
     {
       case SNIOC_SET_SCALE_XL:
+        if (sensor == &priv->sensor[LSM6DSV_ROT_IDX])
+          {
+            return -ENOTTY;
+          }
+
         ret = nxmutex_lock(&priv->lock);
         if (ret >= 0)
           {
@@ -614,6 +735,104 @@ static int lsm6dsv_control(FAR struct sensor_lowerhalf_s *lower,
       default:
         return -ENOTTY;
     }
+}
+
+/****************************************************************************
+ * Name: lsm6dsv_stamp
+ *
+ * Description:
+ *   The timestamp of a sample with newer samples of the same sensor after
+ *   it in the FIFO, read at now.
+ *
+ ****************************************************************************/
+
+static uint64_t lsm6dsv_stamp(FAR struct lsm6dsv_sensor_s *sensor,
+                              uint64_t now, unsigned int newer)
+{
+  uint64_t timestamp;
+
+  /* Never earlier than the last one published, if the ODR runs fast */
+
+  timestamp = now - (uint64_t)newer * LSM6DSV_ODR_PERIOD(sensor->odr);
+  if (timestamp <= sensor->last)
+    {
+      timestamp = sensor->last + 1;
+    }
+
+  sensor->last = timestamp;
+  return timestamp;
+}
+
+/****************************************************************************
+ * Name: lsm6dsv_half
+ *
+ * Description:
+ *   An IEEE 754 half-precision value, little-endian at p, as a float.
+ *
+ ****************************************************************************/
+
+static float lsm6dsv_half(FAR const uint8_t *p)
+{
+  uint16_t h = p[0] | (p[1] << 8);
+  int exp = (h >> 10) & 0x1f;
+  float mant = (float)(h & 0x3ff);
+  float val;
+
+  if (exp == 0)
+    {
+      val = ldexpf(mant, -24);                   /* Subnormal */
+    }
+  else if (exp == 0x1f)
+    {
+      val = mant == 0.0f ? INFINITY : NAN;
+    }
+  else
+    {
+      val = ldexpf(mant + 1024.0f, exp - 25);
+    }
+
+  return (h & 0x8000) != 0 ? -val : val;
+}
+
+/****************************************************************************
+ * Name: lsm6dsv_push_rot
+ *
+ * Description:
+ *   Take one SFLP game rotation word: the first holds X and Y, the second
+ *   Z and W, which completes a quaternion and publishes it.  A second word
+ *   without a first, after an overrun, is dropped.
+ *
+ ****************************************************************************/
+
+static void lsm6dsv_push_rot(FAR struct lsm6dsv_dev_s *priv,
+                             FAR const uint8_t *word, uint64_t now,
+                             unsigned int newer)
+{
+  FAR struct lsm6dsv_sensor_s *sensor = &priv->sensor[LSM6DSV_ROT_IDX];
+  FAR struct sensor_lowerhalf_s *lower = &sensor->lower;
+  struct sensor_rotation rot;
+
+  if (word[1] == 0)
+    {
+      priv->quat[0] = lsm6dsv_half(&word[3]);
+      priv->quat[1] = lsm6dsv_half(&word[5]);
+      priv->half    = true;
+      return;
+    }
+
+  if (!priv->half)
+    {
+      return;
+    }
+
+  priv->half    = false;
+  rot.timestamp = lsm6dsv_stamp(sensor, now, newer);
+  rot.x         = sensor_data_ftof(priv->quat[0]);
+  rot.y         = sensor_data_ftof(priv->quat[1]);
+  rot.z         = sensor_data_ftof(lsm6dsv_half(&word[3]));
+  rot.w         = sensor_data_ftof(lsm6dsv_half(&word[5]));
+  rot.status    = sensor_data_itof(-1);         /* No heading accuracy */
+  lower->push_event(lower->priv, &rot, sizeof(rot));
 }
 
 /****************************************************************************
@@ -639,15 +858,7 @@ static void lsm6dsv_push(FAR struct lsm6dsv_sensor_s *sensor,
   y = (int16_t)(word[3] | (word[4] << 8));
   z = (int16_t)(word[5] | (word[6] << 8));
 
-  /* Never earlier than the last one published, if the ODR runs fast */
-
-  timestamp = now - (uint64_t)newer * LSM6DSV_ODR_PERIOD(sensor->odr);
-  if (timestamp <= sensor->last)
-    {
-      timestamp = sensor->last + 1;
-    }
-
-  sensor->last = timestamp;
+  timestamp = lsm6dsv_stamp(sensor, now, newer);
 
   if (lower->type == SENSOR_TYPE_ACCELEROMETER)
     {
@@ -686,6 +897,7 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
   FAR struct lsm6dsv_sensor_s *accel = &priv->sensor[LSM6DSV_ACCEL_IDX];
   FAR struct lsm6dsv_sensor_s *gyro = &priv->sensor[LSM6DSV_GYRO_IDX];
   FAR struct lsm6dsv_sensor_s *hg = &priv->sensor[LSM6DSV_ACCEL_HG_IDX];
+  FAR struct lsm6dsv_sensor_s *rot = &priv->sensor[LSM6DSV_ROT_IDX];
   uint8_t status[2];
   uint8_t raw[2];
   sensor_data_t temp;
@@ -693,10 +905,17 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
   unsigned int nxl;
   unsigned int ngy;
   unsigned int nhg;
+  unsigned int nrot;
   unsigned int i;
   uint64_t now;
   uint8_t tag;
 
+  /* The reads hold priv->lock, which keeps the embedded functions bank
+   * switched out.  Publishing does not: push_event() takes the upper
+   * half's lock, which is held while it calls activate().
+   */
+
+  nxmutex_lock(&priv->lock);
   lsm6dsv_readregs(priv, LSM6DSV_FIFO_STATUS1, status, 2);
   now = sensor_get_timestamp();
 
@@ -709,6 +928,7 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
 
   if (count == 0)
     {
+      nxmutex_unlock(&priv->lock);
       return;
     }
 
@@ -726,6 +946,7 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
   nxl = 0;
   ngy = 0;
   nhg = 0;
+  nrot = 0;
   for (i = 0; i < count; i++)
     {
       lsm6dsv_readregs(priv, LSM6DSV_FIFO_DATA_TAG, priv->words[i],
@@ -734,7 +955,10 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
       nxl += (tag == FIFO_TAG_XL);
       ngy += (tag == FIFO_TAG_GY);
       nhg += (tag == FIFO_TAG_XL_HG);
+      nrot += (tag == FIFO_TAG_SFLP_GAME && priv->words[i][1] != 0);
     }
+
+  nxmutex_unlock(&priv->lock);
 
   for (i = 0; i < count; i++)
     {
@@ -761,6 +985,14 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
           if (hg->enabled)
             {
               lsm6dsv_push(hg, priv->words[i], now, nhg, temp);
+            }
+        }
+      else if (tag == FIFO_TAG_SFLP_GAME)
+        {
+          nrot -= (priv->words[i][1] != 0);
+          if (rot->enabled)
+            {
+              lsm6dsv_push_rot(priv, priv->words[i], now, nrot);
             }
         }
     }
@@ -840,7 +1072,7 @@ static int lsm6dsv_init(FAR struct lsm6dsv_dev_s *priv)
  * Name: lsm6dsv_register_uorb
  ****************************************************************************/
 
-int lsm6dsv_register_uorb(int devno, int hgdevno,
+int lsm6dsv_register_uorb(int devno, int hgdevno, int rotdevno,
                           FAR struct spi_dev_s *spi, uint32_t devid)
 {
   FAR struct lsm6dsv_dev_s *priv;
@@ -869,7 +1101,8 @@ int lsm6dsv_register_uorb(int devno, int hgdevno,
       goto errout;
     }
 
-  priv->hgdevno = priv->id == LSM6DSV320X_ID ? hgdevno : -1;
+  priv->hgdevno  = priv->id == LSM6DSV320X_ID ? hgdevno : -1;
+  priv->rotdevno = priv->id == LSM6DSV320X_ID ? rotdevno : -1;
 
   for (i = 0; i < LSM6DSV_MAX_IDX; i++)
     {
@@ -878,6 +1111,8 @@ int lsm6dsv_register_uorb(int devno, int hgdevno,
       sensor->lower.ops   = &g_lsm6dsv_ops;
       sensor->lower.type  = i == LSM6DSV_GYRO_IDX ?
                             SENSOR_TYPE_GYROSCOPE :
+                            i == LSM6DSV_ROT_IDX ?
+                            SENSOR_TYPE_ROTATION_VECTOR :
                             SENSOR_TYPE_ACCELEROMETER;
       sensor->lower.nbuffer = CONFIG_SENSORS_LSM6DSV_BUFSIZE;
       sensor->odr         = lsm6dsv_odr(sensor,
@@ -893,6 +1128,11 @@ int lsm6dsv_register_uorb(int devno, int hgdevno,
       lsm6dsv_setfs(&priv->sensor[LSM6DSV_ACCEL_HG_IDX],
                     CONFIG_SENSORS_LSM6DSV_HG_FS);
     }
+
+  /* A unit quaternion, to about 1e-3 (half precision) */
+
+  priv->sensor[LSM6DSV_ROT_IDX].range = sensor_data_itof(1);
+  priv->sensor[LSM6DSV_ROT_IDX].scale = sensor_data_ftof(1.0f / 1024.0f);
 
   ret = sensor_register(&priv->sensor[LSM6DSV_ACCEL_IDX].lower, devno);
   if (ret < 0)
@@ -916,6 +1156,16 @@ int lsm6dsv_register_uorb(int devno, int hgdevno,
         }
     }
 
+  if (priv->rotdevno >= 0)
+    {
+      ret = sensor_register(&priv->sensor[LSM6DSV_ROT_IDX].lower,
+                            priv->rotdevno);
+      if (ret < 0)
+        {
+          goto errout_hg;
+        }
+    }
+
   snprintf(arg1, sizeof(arg1), "%p", priv);
   argv[0] = arg1;
   argv[1] = NULL;
@@ -924,10 +1174,17 @@ int lsm6dsv_register_uorb(int devno, int hgdevno,
                        lsm6dsv_thread, argv);
   if (ret < 0)
     {
-      goto errout_hg;
+      goto errout_rot;
     }
 
   return OK;
+
+errout_rot:
+  if (priv->rotdevno >= 0)
+    {
+      sensor_unregister(&priv->sensor[LSM6DSV_ROT_IDX].lower,
+                        priv->rotdevno);
+    }
 
 errout_hg:
   if (priv->hgdevno >= 0)

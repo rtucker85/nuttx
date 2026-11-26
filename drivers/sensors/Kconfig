@@ -1158,7 +1158,8 @@ config SENSORS_LSM6DSV
 		Enable uORB driver support for the STMicroelectronics LSM6DSV
 		6-axis IMU on SPI, as the sensor_accel and sensor_gyro topics,
 		and the LSM6DSV320X, whose high-g accelerometer is a second
-		sensor_accel topic.  Samples are batched in the device FIFO and
+		sensor_accel topic and whose SFLP sensor fusion's game rotation
+		vector is a sensor_rotation topic.  Samples are batched in the device FIFO and
 		drained by a kernel thread.
 
 if SENSORS_LSM6DSV
@@ -1175,7 +1176,8 @@ config SENSORS_LSM6DSV_INTERVAL
 		Sample period the sensors start with, until set_interval()
 		changes it.  Rounded to the nearest rate the device has at or
 		above it, 7.5 Hz to 7.68 kHz (480 Hz at least for the
-		high-g accelerometer).  8333 is 120 Hz.
+		high-g accelerometer, 15 Hz to 480 Hz for SFLP).  8333 is
+		120 Hz.
 
 config SENSORS_LSM6DSV_POLL_INTERVAL
 	int "FIFO poll period (us)"
