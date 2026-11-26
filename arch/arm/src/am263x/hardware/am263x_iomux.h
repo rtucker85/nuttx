@@ -76,7 +76,9 @@
 #define AM263X_PAD_I2C1_SCL         0x005c  /* I2C1 pads: mode 0 */
 #define AM263X_PAD_I2C1_SDA         0x0060
 #define AM263X_PAD_UART0_RXD        0x006c
+#define AM263X_PAD_UART0_CTSN       0x0068  /* GPIO26 in mode 7 */
 #define AM263X_PAD_UART0_TXD        0x0070
+#define AM263X_PAD_SDFM0_D0         0x01ec  /* GPIO123 in mode 7 */
 
 /* Pad configuration fields */
 
