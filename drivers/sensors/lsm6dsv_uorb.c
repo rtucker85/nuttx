@@ -21,9 +21,10 @@
  ****************************************************************************/
 
 /* STMicroelectronics LSM6DSV 6-axis IMU on SPI, as uORB sensor_accel and
- * sensor_gyro topics.
+ * sensor_gyro topics.  On the LSM6DSV320X the high-g accelerometer is a
+ * second sensor_accel topic.
  *
- * Both sensors run at their requested rates and are batched into the
+ * All sensors run at their requested rates and are batched into the
  * device FIFO.  A kernel thread drains the FIFO every
  * CONFIG_SENSORS_LSM6DSV_POLL_INTERVAL microseconds and publishes every
  * sample, so the publish rate is not limited by the system tick.  Samples
@@ -69,6 +70,7 @@
 #define LSM6DSV_IF_CFG          0x03
 #define LSM6DSV_FIFO_CTRL3      0x09
 #define LSM6DSV_FIFO_CTRL4      0x0a
+#define LSM6DSV_COUNTER_BDR1    0x0b
 #define LSM6DSV_WHO_AM_I        0x0f
 #define LSM6DSV_CTRL1           0x10  /* Accelerometer mode and ODR */
 #define LSM6DSV_CTRL2           0x11  /* Gyroscope mode and ODR */
@@ -77,6 +79,7 @@
 #define LSM6DSV_CTRL8           0x17  /* Accelerometer full scale */
 #define LSM6DSV_FIFO_STATUS1    0x1b
 #define LSM6DSV_OUT_TEMP_L      0x20
+#define LSM6DSV_CTRL1_XL_HG     0x4e  /* LSM6DSV320X high-g FS and ODR */
 #define LSM6DSV_FIFO_DATA_TAG   0x78
 
 #define LSM6DSV_ID              0x70
@@ -91,6 +94,14 @@
 #define CTRL3_SW_RESET          (1 << 0)
 #define CTRL3_IF_INC            (1 << 2)
 #define CTRL3_BDU               (1 << 6)
+
+/* COUNTER_BDR_REG1 */
+
+#define COUNTER_BDR1_XL_HG_BATCH_EN (1 << 3)
+
+/* CTRL1_XL_HG: FS_XL_HG in bits 2:0, ODR_XL_HG in bits 5:3 */
+
+#define CTRL1_XL_HG_ODR_SHIFT   3
 
 /* FIFO_CTRL4.FIFO_MODE */
 
@@ -107,6 +118,7 @@
 #define FIFO_TAG_SHIFT          3
 #define FIFO_TAG_GY             0x01
 #define FIFO_TAG_XL             0x02
+#define FIFO_TAG_XL_HG          0x1d
 
 /* Output data rates, CTRL1/CTRL2.ODR and FIFO_CTRL3.BDR codes 0x2..0xc:
  * 7.5 Hz doubling up to 7.68 kHz.
@@ -115,6 +127,13 @@
 #define LSM6DSV_ODR_FIRST       0x02
 #define LSM6DSV_ODR_LAST        0x0c
 #define LSM6DSV_ODR_PERIOD(odr) (8000000 / (60 << ((odr) - LSM6DSV_ODR_FIRST)))
+
+/* The high-g accelerometer has 480 Hz to 7.68 kHz, ODR_XL_HG codes 3..7.
+ * Its odr is kept as the matching CTRL1 code, 0x8..0xc.
+ */
+
+#define LSM6DSV_HG_ODR_FIRST    0x08
+#define LSM6DSV_HG_ODR_OFFSET   5      /* CTRL1 code - ODR_XL_HG code */
 
 /* SPI: read is address | 0x80; mode 3 */
 
@@ -138,6 +157,7 @@ enum lsm6dsv_idx_e
 {
   LSM6DSV_ACCEL_IDX = 0,
   LSM6DSV_GYRO_IDX,
+  LSM6DSV_ACCEL_HG_IDX,            /* LSM6DSV320X only */
   LSM6DSV_MAX_IDX
 };
 
@@ -164,6 +184,7 @@ struct lsm6dsv_dev_s
   sem_t                     run;       /* Wakes the thread */
   bool                      overrun;   /* FIFO overrun already reported */
   uint8_t                   id;        /* WHO_AM_I */
+  int                       hgdevno;   /* High-g topic, or -1 if none */
   uint8_t                   words[LSM6DSV_FIFO_WORDS][LSM6DSV_WORD_SIZE];
 };
 
@@ -224,6 +245,17 @@ static const struct lsm6dsv_fs_s g_gyro_fs[] =
   { 1000, 0x03,  35.000f },
   { 2000, 0x04,  70.000f },
   { 4000, 0x0c, 140.000f },
+};
+
+/* LSM6DSV320X high-g accelerometer (ST's lsm6dsv320x_from_fs*_to_mg()) */
+
+static const struct lsm6dsv_fs_s g_accel_hg_fs[] =
+{
+  {   32, 0x00,   0.976f },
+  {   64, 0x01,   1.952f },
+  {  128, 0x02,   3.904f },
+  {  256, 0x03,   7.808f },
+  {  320, 0x04,  10.417f },
 };
 
 /****************************************************************************
@@ -289,15 +321,20 @@ static void lsm6dsv_putreg(FAR struct lsm6dsv_dev_s *priv, uint8_t reg,
  * Name: lsm6dsv_odr
  *
  * Description:
- *   The slowest ODR code whose period is no longer than period_us.
+ *   The slowest ODR code the sensor has whose period is no longer than
+ *   period_us.
  *
  ****************************************************************************/
 
-static uint8_t lsm6dsv_odr(uint32_t period_us)
+static uint8_t lsm6dsv_odr(FAR struct lsm6dsv_sensor_s *sensor,
+                           uint32_t period_us)
 {
+  FAR struct lsm6dsv_dev_s *priv = sensor->dev;
   uint8_t odr;
 
-  for (odr = LSM6DSV_ODR_FIRST; odr < LSM6DSV_ODR_LAST; odr++)
+  odr = sensor == &priv->sensor[LSM6DSV_ACCEL_HG_IDX] ?
+        LSM6DSV_HG_ODR_FIRST : LSM6DSV_ODR_FIRST;
+  for (; odr < LSM6DSV_ODR_LAST; odr++)
     {
       if (LSM6DSV_ODR_PERIOD(odr) <= period_us)
         {
@@ -309,11 +346,53 @@ static uint8_t lsm6dsv_odr(uint32_t period_us)
 }
 
 /****************************************************************************
+ * Name: lsm6dsv_running
+ *
+ * Description:
+ *   True if any sensor is enabled.
+ *
+ ****************************************************************************/
+
+static bool lsm6dsv_running(FAR struct lsm6dsv_dev_s *priv)
+{
+  int i;
+
+  for (i = 0; i < LSM6DSV_MAX_IDX; i++)
+    {
+      if (priv->sensor[i].enabled)
+        {
+          return true;
+        }
+    }
+
+  return false;
+}
+
+/****************************************************************************
+ * Name: lsm6dsv_put_hg
+ *
+ * Description:
+ *   Write the high-g accelerometer's full scale and ODR, or off.  It is
+ *   batched into the FIFO at its ODR, and its output registers are left
+ *   off.
+ *
+ ****************************************************************************/
+
+static void lsm6dsv_put_hg(FAR struct lsm6dsv_dev_s *priv)
+{
+  FAR struct lsm6dsv_sensor_s *hg = &priv->sensor[LSM6DSV_ACCEL_HG_IDX];
+  uint8_t odr = hg->enabled ? hg->odr - LSM6DSV_HG_ODR_OFFSET : 0;
+
+  lsm6dsv_putreg(priv, LSM6DSV_CTRL1_XL_HG,
+                 (odr << CTRL1_XL_HG_ODR_SHIFT) | hg->fs);
+}
+
+/****************************************************************************
  * Name: lsm6dsv_apply
  *
  * Description:
- *   Write the ODR and FIFO batch rate of both sensors, and switch the FIFO
- *   to stream mode while either runs, or bypass (empty) when neither does.
+ *   Write the ODR and FIFO batching of every sensor, and switch the FIFO
+ *   to stream mode while any runs, or bypass (empty) when none does.
  *   Called with priv->lock held.
  *
  ****************************************************************************/
@@ -322,6 +401,7 @@ static void lsm6dsv_apply(FAR struct lsm6dsv_dev_s *priv)
 {
   FAR struct lsm6dsv_sensor_s *accel = &priv->sensor[LSM6DSV_ACCEL_IDX];
   FAR struct lsm6dsv_sensor_s *gyro = &priv->sensor[LSM6DSV_GYRO_IDX];
+  FAR struct lsm6dsv_sensor_s *hg = &priv->sensor[LSM6DSV_ACCEL_HG_IDX];
   uint8_t xl = accel->enabled ? accel->odr : 0;
   uint8_t gy = gyro->enabled ? gyro->odr : 0;
 
@@ -330,8 +410,16 @@ static void lsm6dsv_apply(FAR struct lsm6dsv_dev_s *priv)
   lsm6dsv_putreg(priv, LSM6DSV_CTRL1, xl);
   lsm6dsv_putreg(priv, LSM6DSV_CTRL2, gy);
   lsm6dsv_putreg(priv, LSM6DSV_FIFO_CTRL3, (gy << 4) | xl);
-  lsm6dsv_putreg(priv, LSM6DSV_FIFO_CTRL4,
-                 (xl | gy) != 0 ? FIFO_MODE_STREAM : FIFO_MODE_BYPASS);
+
+  if (priv->hgdevno >= 0)
+    {
+      lsm6dsv_put_hg(priv);
+      lsm6dsv_putreg(priv, LSM6DSV_COUNTER_BDR1,
+                     hg->enabled ? COUNTER_BDR1_XL_HG_BATCH_EN : 0);
+    }
+
+  lsm6dsv_putreg(priv, LSM6DSV_FIFO_CTRL4, lsm6dsv_running(priv) ?
+                 FIFO_MODE_STREAM : FIFO_MODE_BYPASS);
 }
 
 /****************************************************************************
@@ -351,7 +439,13 @@ static int lsm6dsv_setfs(FAR struct lsm6dsv_sensor_s *sensor,
   size_t i;
   float unit;
 
-  if (sensor->lower.type == SENSOR_TYPE_ACCELEROMETER)
+  if (sensor == &priv->sensor[LSM6DSV_ACCEL_HG_IDX])
+    {
+      table = g_accel_hg_fs;
+      count = nitems(g_accel_hg_fs);
+      unit  = LSM6DSV_ONE_G;
+    }
+  else if (sensor->lower.type == SENSOR_TYPE_ACCELEROMETER)
     {
       table = g_accel_fs;
       count = nitems(g_accel_fs);
@@ -384,7 +478,11 @@ static int lsm6dsv_setfs(FAR struct lsm6dsv_sensor_s *sensor,
   sensor->scale = sensor_data_ftof(table[i].lsb * unit / 1000.0f);
   sensor->range = sensor_data_ftof(table[i].range * unit);
 
-  if (sensor->lower.type == SENSOR_TYPE_ACCELEROMETER)
+  if (sensor == &priv->sensor[LSM6DSV_ACCEL_HG_IDX])
+    {
+      lsm6dsv_put_hg(priv);
+    }
+  else if (sensor->lower.type == SENSOR_TYPE_ACCELEROMETER)
     {
       lsm6dsv_putreg(priv, LSM6DSV_CTRL8, sensor->fs);
     }
@@ -414,9 +512,7 @@ static int lsm6dsv_activate(FAR struct sensor_lowerhalf_s *lower,
       return ret;
     }
 
-  wake = enable &&
-         !priv->sensor[LSM6DSV_ACCEL_IDX].enabled &&
-         !priv->sensor[LSM6DSV_GYRO_IDX].enabled;
+  wake = enable && !lsm6dsv_running(priv);
 
   sensor->enabled = enable;
   lsm6dsv_apply(priv);
@@ -448,7 +544,7 @@ static int lsm6dsv_set_interval(FAR struct sensor_lowerhalf_s *lower,
       return ret;
     }
 
-  sensor->odr = lsm6dsv_odr(*period_us);
+  sensor->odr = lsm6dsv_odr(sensor, *period_us);
   *period_us  = LSM6DSV_ODR_PERIOD(sensor->odr);
 
   if (sensor->enabled)
@@ -469,6 +565,7 @@ static int lsm6dsv_get_info(FAR struct sensor_lowerhalf_s *lower,
                             FAR struct sensor_device_info_s *info)
 {
   FAR struct lsm6dsv_sensor_s *sensor = (FAR struct lsm6dsv_sensor_s *)lower;
+  FAR struct lsm6dsv_dev_s *priv = sensor->dev;
 
   memset(info, 0, sizeof(*info));
   info->version    = 1;
@@ -476,7 +573,9 @@ static int lsm6dsv_get_info(FAR struct sensor_lowerhalf_s *lower,
   info->max_range  = sensor->range;
   info->resolution = sensor->scale;
   info->min_delay  = LSM6DSV_ODR_PERIOD(LSM6DSV_ODR_LAST);
-  info->max_delay  = LSM6DSV_ODR_PERIOD(LSM6DSV_ODR_FIRST);
+  info->max_delay  = LSM6DSV_ODR_PERIOD(
+                       sensor == &priv->sensor[LSM6DSV_ACCEL_HG_IDX] ?
+                       LSM6DSV_HG_ODR_FIRST : LSM6DSV_ODR_FIRST);
   strlcpy(info->name, sensor->dev->id == LSM6DSV320X_ID ?
           "LSM6DSV320X" : "LSM6DSV", sizeof(info->name));
   strlcpy(info->vendor, "STMicroelectronics", sizeof(info->vendor));
@@ -487,7 +586,7 @@ static int lsm6dsv_get_info(FAR struct sensor_lowerhalf_s *lower,
  * Name: lsm6dsv_control
  *
  * Description:
- *   SNIOC_SET_SCALE_XL: full scale, in g for the accelerometer and in dps
+ *   SNIOC_SET_SCALE_XL: full scale, in g for the accelerometers and in dps
  *   for the gyroscope.  The smallest scale that covers it is used.
  *
  ****************************************************************************/
@@ -586,12 +685,14 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
 {
   FAR struct lsm6dsv_sensor_s *accel = &priv->sensor[LSM6DSV_ACCEL_IDX];
   FAR struct lsm6dsv_sensor_s *gyro = &priv->sensor[LSM6DSV_GYRO_IDX];
+  FAR struct lsm6dsv_sensor_s *hg = &priv->sensor[LSM6DSV_ACCEL_HG_IDX];
   uint8_t status[2];
   uint8_t raw[2];
   sensor_data_t temp;
   unsigned int count;
   unsigned int nxl;
   unsigned int ngy;
+  unsigned int nhg;
   unsigned int i;
   uint64_t now;
   uint8_t tag;
@@ -624,6 +725,7 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
 
   nxl = 0;
   ngy = 0;
+  nhg = 0;
   for (i = 0; i < count; i++)
     {
       lsm6dsv_readregs(priv, LSM6DSV_FIFO_DATA_TAG, priv->words[i],
@@ -631,6 +733,7 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
       tag = priv->words[i][0] >> FIFO_TAG_SHIFT;
       nxl += (tag == FIFO_TAG_XL);
       ngy += (tag == FIFO_TAG_GY);
+      nhg += (tag == FIFO_TAG_XL_HG);
     }
 
   for (i = 0; i < count; i++)
@@ -652,6 +755,14 @@ static void lsm6dsv_drain(FAR struct lsm6dsv_dev_s *priv)
               lsm6dsv_push(gyro, priv->words[i], now, ngy, temp);
             }
         }
+      else if (tag == FIFO_TAG_XL_HG)
+        {
+          nhg--;
+          if (hg->enabled)
+            {
+              lsm6dsv_push(hg, priv->words[i], now, nhg, temp);
+            }
+        }
     }
 }
 
@@ -666,8 +777,7 @@ static int lsm6dsv_thread(int argc, FAR char **argv)
 
   while (true)
     {
-      if (!priv->sensor[LSM6DSV_ACCEL_IDX].enabled &&
-          !priv->sensor[LSM6DSV_GYRO_IDX].enabled)
+      if (!lsm6dsv_running(priv))
         {
           nxsem_wait_uninterruptible(&priv->run);
           continue;
@@ -685,7 +795,7 @@ static int lsm6dsv_thread(int argc, FAR char **argv)
  *
  * Description:
  *   Check WHO_AM_I, reset, and set up SPI-only, block data update,
- *   address auto-increment, both sensors off.
+ *   address auto-increment, all sensors off.
  *
  ****************************************************************************/
 
@@ -730,8 +840,8 @@ static int lsm6dsv_init(FAR struct lsm6dsv_dev_s *priv)
  * Name: lsm6dsv_register_uorb
  ****************************************************************************/
 
-int lsm6dsv_register_uorb(int devno, FAR struct spi_dev_s *spi,
-                          uint32_t devid)
+int lsm6dsv_register_uorb(int devno, int hgdevno,
+                          FAR struct spi_dev_s *spi, uint32_t devid)
 {
   FAR struct lsm6dsv_dev_s *priv;
   FAR struct lsm6dsv_sensor_s *sensor;
@@ -759,22 +869,30 @@ int lsm6dsv_register_uorb(int devno, FAR struct spi_dev_s *spi,
       goto errout;
     }
 
+  priv->hgdevno = priv->id == LSM6DSV320X_ID ? hgdevno : -1;
+
   for (i = 0; i < LSM6DSV_MAX_IDX; i++)
     {
       sensor              = &priv->sensor[i];
       sensor->dev         = priv;
       sensor->lower.ops   = &g_lsm6dsv_ops;
-      sensor->lower.type  = i == LSM6DSV_ACCEL_IDX ?
-                            SENSOR_TYPE_ACCELEROMETER :
-                            SENSOR_TYPE_GYROSCOPE;
+      sensor->lower.type  = i == LSM6DSV_GYRO_IDX ?
+                            SENSOR_TYPE_GYROSCOPE :
+                            SENSOR_TYPE_ACCELEROMETER;
       sensor->lower.nbuffer = CONFIG_SENSORS_LSM6DSV_BUFSIZE;
-      sensor->odr         = lsm6dsv_odr(CONFIG_SENSORS_LSM6DSV_INTERVAL);
+      sensor->odr         = lsm6dsv_odr(sensor,
+                                        CONFIG_SENSORS_LSM6DSV_INTERVAL);
     }
 
   lsm6dsv_setfs(&priv->sensor[LSM6DSV_ACCEL_IDX],
                 CONFIG_SENSORS_LSM6DSV_ACCEL_FS);
   lsm6dsv_setfs(&priv->sensor[LSM6DSV_GYRO_IDX],
                 CONFIG_SENSORS_LSM6DSV_GYRO_FS);
+  if (priv->hgdevno >= 0)
+    {
+      lsm6dsv_setfs(&priv->sensor[LSM6DSV_ACCEL_HG_IDX],
+                    CONFIG_SENSORS_LSM6DSV_HG_FS);
+    }
 
   ret = sensor_register(&priv->sensor[LSM6DSV_ACCEL_IDX].lower, devno);
   if (ret < 0)
@@ -788,6 +906,16 @@ int lsm6dsv_register_uorb(int devno, FAR struct spi_dev_s *spi,
       goto errout_accel;
     }
 
+  if (priv->hgdevno >= 0)
+    {
+      ret = sensor_register(&priv->sensor[LSM6DSV_ACCEL_HG_IDX].lower,
+                            priv->hgdevno);
+      if (ret < 0)
+        {
+          goto errout_gyro;
+        }
+    }
+
   snprintf(arg1, sizeof(arg1), "%p", priv);
   argv[0] = arg1;
   argv[1] = NULL;
@@ -796,10 +924,17 @@ int lsm6dsv_register_uorb(int devno, FAR struct spi_dev_s *spi,
                        lsm6dsv_thread, argv);
   if (ret < 0)
     {
-      goto errout_gyro;
+      goto errout_hg;
     }
 
   return OK;
+
+errout_hg:
+  if (priv->hgdevno >= 0)
+    {
+      sensor_unregister(&priv->sensor[LSM6DSV_ACCEL_HG_IDX].lower,
+                        priv->hgdevno);
+    }
 
 errout_gyro:
   sensor_unregister(&priv->sensor[LSM6DSV_GYRO_IDX].lower, devno);
