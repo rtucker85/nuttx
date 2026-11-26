@@ -62,6 +62,10 @@ if(CONFIG_LEDS_LED1642GW)
   list(APPEND SRCS led1642gw.c)
 endif()
 
+if(CONFIG_TPIC2810)
+  list(APPEND SRCS tpic2810.c)
+endif()
+
 if(CONFIG_WS2812)
   list(APPEND SRCS ws2812.c)
 endif()

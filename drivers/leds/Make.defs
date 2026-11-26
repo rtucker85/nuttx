@@ -78,6 +78,12 @@ ifeq ($(CONFIG_LEDS_LED1642GW),y)
   LEDVPATH = :leds
 endif
 
+ifeq ($(CONFIG_TPIC2810),y)
+  CSRCS += tpic2810.c
+  LEDDEPATH = --dep-path leds
+  LEDVPATH = :leds
+endif
+
 ifeq ($(CONFIG_WS2812),y)
   CSRCS += ws2812.c
   LEDDEPATH = --dep-path leds
