@@ -1156,9 +1156,10 @@ config SENSORS_LSM6DSV
 	select SPI
 	---help---
 		Enable uORB driver support for the STMicroelectronics LSM6DSV
-		6-axis IMU on SPI, as the sensor_accel and sensor_gyro topics.
-		Samples are batched in the device FIFO and drained by a kernel
-		thread.
+		6-axis IMU on SPI, as the sensor_accel and sensor_gyro topics,
+		and the LSM6DSV320X, whose high-g accelerometer is a second
+		sensor_accel topic.  Samples are batched in the device FIFO and
+		drained by a kernel thread.
 
 if SENSORS_LSM6DSV
 
@@ -1171,16 +1172,17 @@ config SENSORS_LSM6DSV_INTERVAL
 	int "Default sample period (us)"
 	default 8333
 	---help---
-		Sample period both sensors start with, until set_interval()
+		Sample period the sensors start with, until set_interval()
 		changes it.  Rounded to the nearest rate the device has at or
-		above it, 7.5 Hz to 7.68 kHz.  8333 is 120 Hz.
+		above it, 7.5 Hz to 7.68 kHz (480 Hz at least for the
+		high-g accelerometer).  8333 is 120 Hz.
 
 config SENSORS_LSM6DSV_POLL_INTERVAL
 	int "FIFO poll period (us)"
 	default 10000
 	---help---
 		How often the thread drains the FIFO.  The FIFO holds 512
-		samples, so this must stay below 512 sample periods of the two
+		samples, so this must stay below 512 sample periods of all the
 		sensors together.
 
 config SENSORS_LSM6DSV_ACCEL_FS
@@ -1194,6 +1196,13 @@ config SENSORS_LSM6DSV_GYRO_FS
 	default 2000
 	---help---
 		125, 250, 500, 1000, 2000 or 4000; other values round up.
+
+config SENSORS_LSM6DSV_HG_FS
+	int "Default high-g accelerometer full scale (g)"
+	default 320
+	---help---
+		LSM6DSV320X only: 32, 64, 128, 256 or 320; other values round
+		up.
 
 config SENSORS_LSM6DSV_BUFSIZE
 	int "uORB buffer size per topic"
