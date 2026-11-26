@@ -178,6 +178,46 @@
 #define DRV8145_CFG4_SPARE          (1 << 1)
 #define DRV8145_CFG4_IN_AND         (1 << 0)  /* Else OR */
 
+/* The settings of the CONFIG1-4 fields, as struct drv8145_params_s takes
+ * them (each the field's register code), and what they mean.
+ */
+
+#define DRV8145_SR_COUNT            8   /* Slew rate, CONFIG3 S_SR */
+#define DRV8145_ITRIP_OFF           0   /* ITRIP regulation, CONFIG2 */
+#define DRV8145_ITRIP_COUNT         8
+#define DRV8145_TOFF_20US           0   /* ITRIP off time, CONFIG3 */
+#define DRV8145_TOFF_30US           1
+#define DRV8145_TOFF_40US           2
+#define DRV8145_TOFF_50US           3
+#define DRV8145_TOCP_6US            0   /* OCP filter, CONFIG4 */
+#define DRV8145_TOCP_3US            1
+#define DRV8145_TOCP_1_5US          2
+#define DRV8145_TOCP_MIN            3   /* About 0.2 us */
+#define DRV8145_OCP_100             0   /* OCP threshold, CONFIG4 */
+#define DRV8145_OCP_50              1   /* (3 is 50 % too) */
+#define DRV8145_OCP_75              2
+#define DRV8145_VMOV_35V            0   /* VM overvoltage, CONFIG1 */
+#define DRV8145_VMOV_28V            1
+#define DRV8145_VMOV_18V            2
+#define DRV8145_VMOV_OFF            3
+#define DRV8145_LOAD_GND            0   /* Load type, CONFIG2 S_DIAG */
+#define DRV8145_LOAD_VM             1
+
+/* The same in units, indexed by the codes above (SLVSG22B 6.5.6, Table
+ * 7-5 and 8.1.7-8.1.10), as initializers for userspace tables.  Slew
+ * rate: output rise time with high-side recirculation at VM = 13.5 V,
+ * typical, in 0.1 V/us; ITRIP: V on IPROPI in mV (0: regulation off);
+ * TOFF and TOCP in ns; OCP in % of the full threshold; VMOV in V (0: off).
+ */
+
+#define DRV8145_SR_X10_VUS          { 15, 47, 96, 144, 206, 265, 379, 471 }
+#define DRV8145_ITRIP_MV            { 0, 1180, 1410, 1650, 1980, 2310, \
+                                      2640, 2970 }
+#define DRV8145_TOFF_NS             { 20000, 30000, 40000, 50000 }
+#define DRV8145_TOCP_NS             { 6000, 3000, 1500, 200 }
+#define DRV8145_OCP_PERCENT         { 100, 50, 75, 50 }
+#define DRV8145_VMOV_V              { 35, 28, 18, 0 }
+
 /* Register reset values */
 
 #define DRV8145_CONFIG1_RESET       0x10
@@ -218,6 +258,15 @@
  * DRV8145IOC_REINIT      Set up the whole chain again as at
  *                        registration: every output goes Hi-Z.
  *                        arg: none
+ * DRV8145IOC_GETPARAMS   CONFIG1-4 as named settings, read from the
+ *                        device.
+ *                        arg: FAR struct drv8145_params_s *
+ * DRV8145IOC_SETPARAMS   Check and write named settings, as SETCONFIG
+ *                        does: they last until changed, also through a
+ *                        set-up after a power-on reset.  A setting out
+ *                        of range is -EINVAL and nothing is written.
+ *                        Settings can be changed with the output on.
+ *                        arg: FAR const struct drv8145_params_s *
  * DRV8145IOC_DRVOFFTEST  Check the board's DRVOFF pin reaches the
  *                        device: drive it low and high and read
  *                        STATUS2 DRVOFF_STAT each time, while S_DRVOFF
@@ -238,6 +287,8 @@
 #define DRV8145IOC_SLEEP            _DRV8145IOC(10)
 #define DRV8145IOC_REINIT           _DRV8145IOC(11)
 #define DRV8145IOC_DRVOFFTEST       _DRV8145IOC(12)
+#define DRV8145IOC_GETPARAMS        _DRV8145IOC(13)
+#define DRV8145IOC_SETPARAMS        _DRV8145IOC(14)
 
 /****************************************************************************
  * Public Types
@@ -251,6 +302,28 @@ struct drv8145_config_s
   uint8_t config2;
   uint8_t config3;
   uint8_t config4;
+};
+
+/* CONFIG1-4 as named settings (the codes above; booleans 0 or 1) */
+
+struct drv8145_params_s
+{
+  uint8_t slew;             /* DRV8145_SR code, 0 (1.5 V/us) - 7 */
+  uint8_t itrip;            /* DRV8145_ITRIP code, 0 off, 1-7 */
+  uint8_t toff;             /* DRV8145_TOFF_* */
+  uint8_t ocp;              /* DRV8145_OCP_* */
+  uint8_t tocp;             /* DRV8145_TOCP_* */
+  uint8_t vmov;             /* DRV8145_VMOV_* */
+  uint8_t load;             /* DRV8145_LOAD_* */
+  uint8_t olp;              /* Off-state diagnostics allowed */
+  uint8_t ola;              /* Open load detection in ACTIVE */
+  uint8_t ssc;              /* Spread spectrum clocking */
+  uint8_t ocp_retry;        /* Retry after the fault, else latch */
+  uint8_t tsd_retry;
+  uint8_t vmov_retry;       /* Also VM undervoltage */
+  uint8_t ola_retry;
+  uint8_t drvoff_and;       /* DRVOFF pin AND S_DRVOFF, else OR */
+  uint8_t in_and;           /* IN pin AND S_IN, else OR */
 };
 
 /* Output modes */
