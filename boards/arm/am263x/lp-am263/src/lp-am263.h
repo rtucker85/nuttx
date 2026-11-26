@@ -86,4 +86,16 @@ int am263x_eeprom_macaddr(uint8_t mac[6]);
 #  endif
 #endif
 
+/****************************************************************************
+ * Name: am263x_tpic2810_initialize
+ *
+ * Description:
+ *   Register the TPIC2810's eight LEDs on I2C1 as /dev/userleds1.
+ *
+ ****************************************************************************/
+
+#if defined(CONFIG_TPIC2810) && defined(CONFIG_AM263X_I2C1)
+int am263x_tpic2810_initialize(void);
+#endif
+
 #endif /* __BOARDS_ARM_AM263X_LP_AM263_SRC_LP_AM263_H */

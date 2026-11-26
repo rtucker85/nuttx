@@ -29,6 +29,8 @@
 #include <syslog.h>
 
 #include <nuttx/fs/fs.h>
+#include <nuttx/input/buttons.h>
+#include <nuttx/leds/userled.h>
 
 #include "lp-am263.h"
 
@@ -83,6 +85,32 @@ int am263x_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: Failed to initialize the EEPROM: %d\n", ret);
+    }
+#endif
+
+#if defined(CONFIG_TPIC2810) && defined(CONFIG_AM263X_I2C1)
+  ret = am263x_tpic2810_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to register /dev/userleds1: %d\n",
+             ret);
+    }
+#endif
+
+#if defined(CONFIG_USERLED_LOWER) && !defined(CONFIG_ARCH_LEDS)
+  ret = userled_lower_initialize("/dev/userleds");
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to register /dev/userleds: %d\n",
+             ret);
+    }
+#endif
+
+#ifdef CONFIG_INPUT_BUTTONS_LOWER
+  ret = btn_lower_initialize("/dev/buttons");
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to register /dev/buttons: %d\n", ret);
     }
 #endif
 

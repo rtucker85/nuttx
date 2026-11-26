@@ -26,6 +26,16 @@ if(CONFIG_AM263X_MCSPI)
   list(APPEND SRCS am263x_spi.c)
 endif()
 
+if(CONFIG_ARCH_LEDS
+   OR CONFIG_USERLED_LOWER
+   OR CONFIG_TPIC2810)
+  list(APPEND SRCS am263x_leds.c)
+endif()
+
+if(CONFIG_ARCH_BUTTONS)
+  list(APPEND SRCS am263x_buttons.c)
+endif()
+
 if(CONFIG_AM263X_I2C1)
   list(APPEND SRCS am263x_eeprom.c)
 endif()
