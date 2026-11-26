@@ -28,6 +28,14 @@ ifeq ($(CONFIG_AM263X_MCSPI),y)
 CSRCS += am263x_spi.c
 endif
 
+ifneq ($(CONFIG_ARCH_LEDS)$(CONFIG_USERLED_LOWER)$(CONFIG_TPIC2810),)
+CSRCS += am263x_leds.c
+endif
+
+ifeq ($(CONFIG_ARCH_BUTTONS),y)
+CSRCS += am263x_buttons.c
+endif
+
 ifeq ($(CONFIG_AM263X_I2C1),y)
 CSRCS += am263x_eeprom.c
 endif

@@ -1907,6 +1907,10 @@ config ARCH_BOARD_BEAGLEBONE_BLACK
 config ARCH_BOARD_LP_AM263
 	bool "TI LP-AM263 LaunchPad"
 	depends on ARCH_CHIP_AM263X
+	select ARCH_HAVE_LEDS
+	select ARCH_HAVE_BUTTONS
+	select ARCH_HAVE_IRQBUTTONS
+	select AM263X_GPIO_IRQ if ARCH_IRQBUTTONS
 	---help---
 		TI LP-AM263 LaunchPad with an AM2634 (four Cortex-R5F cores).
 		NuttX runs on R5FSS0-0, loaded by the TI SBL.

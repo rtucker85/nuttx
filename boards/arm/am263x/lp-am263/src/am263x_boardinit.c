@@ -56,6 +56,10 @@ void am263x_board_initialize(void)
 {
   am263x_pinmux_config(g_console_pins,
                        sizeof(g_console_pins) / sizeof(g_console_pins[0]));
+
+#ifdef CONFIG_ARCH_LEDS
+  board_autoled_initialize();
+#endif
 }
 
 /****************************************************************************
