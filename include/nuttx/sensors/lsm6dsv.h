@@ -51,13 +51,18 @@ extern "C"
  *   Probe an STMicroelectronics LSM6DSV 6-axis IMU on an SPI bus and
  *   register it as the uORB topics sensor_accel<devno> and
  *   sensor_gyro<devno>.  On an LSM6DSV320X the high-g accelerometer is
- *   also registered, as sensor_accel<hgdevno>.  A kernel thread polls the
- *   device while any topic is active.
+ *   also registered, as sensor_accel<hgdevno>, and the SFLP sensor
+ *   fusion's game rotation vector (a quaternion in the IMU's axes, with no
+ *   heading reference) as sensor_rotation<rotdevno>.  A kernel thread
+ *   polls the device while any topic is active.
  *
  * Input Parameters:
  *   devno   - Topic instance number
  *   hgdevno - sensor_accel instance for the LSM6DSV320X's high-g
  *             accelerometer, or negative to leave it unused.  Ignored on
+ *             the LSM6DSV.
+ *   rotdevno - sensor_rotation instance for the LSM6DSV320X's SFLP game
+ *             rotation vector, or negative to leave it unused.  Ignored on
  *             the LSM6DSV.
  *   spi     - The SPI bus the device is on
  *   devid   - The device's SPI ID for SPI_SELECT(), e.g. SPIDEV_IMU(0)
@@ -68,7 +73,7 @@ extern "C"
  *
  ****************************************************************************/
 
-int lsm6dsv_register_uorb(int devno, int hgdevno,
+int lsm6dsv_register_uorb(int devno, int hgdevno, int rotdevno,
                           FAR struct spi_dev_s *spi, uint32_t devid);
 
 #ifdef __cplusplus
