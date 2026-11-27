@@ -417,9 +417,12 @@ got_lladdr:
     {
       int senderr;
 
-      nerr("ERROR: Failed to get the router advertisement: "
-           "%d (retries=%d)\n",
-           ret, retries);
+      /* No router is normal on a link-local only network: the link-local
+       * address stays configured.
+       */
+
+      nwarn("WARNING: No router advertisement: %d (retries=%d)\n",
+            ret, retries);
 
       /* Claim the link local address as ours by sending the ICMPv6 Neighbor
        * Advertisement message.
