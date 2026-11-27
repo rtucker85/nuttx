@@ -46,6 +46,12 @@
  * Before every new START the driver waits for both BB and MST to clear.
  * MST drops after BB at the end of a STOP, and a START issued in between is
  * silently lost.
+ *
+ * An event raises the module's interrupt only if its source is enabled in
+ * I2CIMR when it happens; enabling a source whose flag is already set does
+ * not.  The START and the I2CIMR write that follows it are made with
+ * interrupts off, or a thread preempted between the two for longer than
+ * the address phase finds TXRDY (or RXRDY) set but never serviced.
  */
 
 /****************************************************************************
@@ -682,6 +688,7 @@ static int i2c_waitidle(struct am263x_i2c_s *priv)
 static int i2c_segment(struct am263x_i2c_s *priv, struct i2c_msg_s *msgs,
                        int nmsgs, uint32_t total, bool stop)
 {
+  irqstate_t flags;
   uint64_t nominal;
   uint32_t mdr;
   uint32_t imr;
@@ -753,8 +760,16 @@ static int i2c_segment(struct am263x_i2c_s *priv, struct i2c_msg_s *msgs,
       i2c_putreg(priv, AM263X_I2C_CNT_OFFSET, total);
     }
 
+  /* A flag that rises while its source is masked never interrupts (see the
+   * notes at the top), so nothing may run between the START and the
+   * enable.  Otherwise a preempted segment times out with TXRDY pending
+   * and only the address sent (STR 1010).
+   */
+
+  flags = up_irq_save();
   i2c_putreg(priv, AM263X_I2C_MDR_OFFSET, mdr);
   i2c_putreg(priv, AM263X_I2C_IMR_OFFSET, imr);
+  up_irq_restore(flags);
 
   /* Four times the nominal duration, address and stop included, plus the
    * configured slack.
