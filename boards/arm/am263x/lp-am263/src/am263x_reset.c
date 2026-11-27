@@ -29,6 +29,10 @@
 #include <nuttx/arch.h>
 #include <nuttx/board.h>
 
+#include <sys/boardctl.h>
+
+#include "am263x_systemreset.h"
+
 #ifdef CONFIG_BOARDCTL_RESET
 
 /****************************************************************************
@@ -51,3 +55,21 @@ int board_reset(int status)
 }
 
 #endif /* CONFIG_BOARDCTL_RESET */
+
+#ifdef CONFIG_BOARDCTL_RESET_CAUSE
+
+/****************************************************************************
+ * Name: board_reset_cause
+ *
+ * Description:
+ *   The cause of the last reset, from TOP_RCM.WARM_RST_CAUSE as read at
+ *   boot (see am263x_reset_cause_get()).
+ *
+ ****************************************************************************/
+
+int board_reset_cause(FAR struct boardioc_reset_cause_s *cause)
+{
+  return am263x_reset_cause_get(cause);
+}
+
+#endif /* CONFIG_BOARDCTL_RESET_CAUSE */

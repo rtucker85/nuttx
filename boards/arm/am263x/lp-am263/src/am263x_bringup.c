@@ -43,6 +43,10 @@
 #  include "am263x_tsense.h"
 #endif
 
+#ifdef CONFIG_AM263X_WDT
+#  include "am263x_wdt.h"
+#endif
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -58,6 +62,19 @@ int am263x_bringup(void)
   /* First, so that a thermal shutdown or watchdog reset is in the log */
 
   am263x_reset_report();
+
+#ifdef CONFIG_AM263X_WDT
+  /* WDT0.  Not started here unless CONFIG_WATCHDOG_AUTOMONITOR: whoever
+   * opens it starts and feeds it.
+   */
+
+  ret = am263x_wdt_initialize(CONFIG_WATCHDOG_DEVPATH, 0);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to register %s: %d\n",
+             CONFIG_WATCHDOG_DEVPATH, ret);
+    }
+#endif
 
 #ifdef CONFIG_FS_PROCFS
   ret = nx_mount(NULL, "/proc", "procfs", 0, NULL);
