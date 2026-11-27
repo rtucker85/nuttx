@@ -317,6 +317,62 @@ static void show_usage(const char *progname, const char *msg, int exitcode)
 }
 
 /****************************************************************************
+ * Name: strip_altpath
+ *
+ * Description:
+ *   The source's path relative to the dependency path it is in, if that
+ *   can be told from its name: the rest of file after the longest
+ *   dependency path it starts with (and a separator), or file itself if
+ *   it is a relative path in a subdirectory of ".", which is searched.
+ *   Else NULL.
+ *
+ ****************************************************************************/
+
+static char *strip_altpath(char *file)
+{
+  char *paths;
+  char *path;
+  char *save;
+  char *best = NULL;
+  size_t bestlen = 0;
+  size_t len;
+  bool dot = false;
+  struct stat buf;
+
+  paths = strdup(g_altpath);
+  if (paths == NULL)
+    {
+      fprintf(stderr, "ERROR: Failed to strdup paths\n");
+      exit(EXIT_FAILURE);
+    }
+
+  for (path = strtok_r(paths, " ", &save); path != NULL;
+       path = strtok_r(NULL, " ", &save))
+    {
+      dot |= strcmp(path, ".") == 0;
+      len = strlen(path);
+      if (len > bestlen && strncmp(file, path, len) == 0 &&
+          (file[len] == '/' || file[len] == '\\') && file[len + 1] != '\0')
+        {
+          best    = &file[len + 1];
+          bestlen = len;
+        }
+    }
+
+  free(paths);
+
+  if (best == NULL && dot && file[0] != '/' && file[0] != '\\' &&
+      strncmp(file, "..", 2) != 0 &&
+      (strchr(file, '/') != NULL || strchr(file, '\\') != NULL) &&
+      stat(file, &buf) == 0 && S_ISREG(buf.st_mode))
+    {
+      best = file;
+    }
+
+  return best;
+}
+
+/****************************************************************************
  * Name: do_shquote
  *
  * Description:
@@ -769,17 +825,20 @@ static void do_dependency(const char *file)
           exit(EXIT_FAILURE);
         }
 
-      /* Check g_altpath. If only the CURRENT path is included,
-       * the obj target use its own full path.
+      /* The object is named for the source's path relative to the
+       * dependency path it is in, as Makefiles name it
+       * ($(CSRCS:%=%$(SUFFIX)$(OBJEXT)) with the sources found through
+       * VPATH): ./hw/x.c is hw/x.c, ../lib/y.c (with --dep-path ../lib)
+       * is y.c.  Taking the basename here would lose hw/, and the rule
+       * would match no object.  Otherwise, as before: the full path if
+       * only the current directory is searched, else the basename.
        */
 
-      if (strcmp(g_altpath, ".") == 0)
+      objname = strip_altpath(dupname);
+      if (objname == NULL)
         {
-          objname = dupname;
-        }
-      else
-        {
-          objname = basename(dupname);
+          objname = strcmp(g_altpath, ".") == 0 ? dupname :
+                    basename(dupname);
         }
 
       dotptr  = strrchr(objname, '.');
