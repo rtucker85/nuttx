@@ -56,7 +56,7 @@ ifeq ($(CONFIG_BOARDCTL),y)
 CSRCS += am263x_appinit.c
 endif
 
-ifeq ($(CONFIG_BOARDCTL_RESET),y)
+ifneq ($(CONFIG_BOARDCTL_RESET)$(CONFIG_BOARDCTL_RESET_CAUSE),)
 CSRCS += am263x_reset.c
 endif
 
