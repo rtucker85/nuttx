@@ -289,6 +289,26 @@ config AM263X_TSENSE
 		the factory trims, as a uORB temperature topic carrying the
 		hottest of TSENSE0-2 (am263x_tsense_register()).
 
+config AM263X_WDT
+	bool "Watchdog (MSS WDT0-3, RTI DWWD)"
+	default n
+	depends on WATCHDOG
+	---help---
+		The MSS watchdogs as watchdog timer devices
+		(am263x_wdt_initialize()).  An expiry is a SoC warm reset, so the
+		ROM and the SBL boot again and TOP_RCM.WARM_RST_CAUSE shows the
+		watchdog.  The counter stops while the CPU is halted in the
+		debugger.  Timeouts from 2 ms to 5368 ms, in steps of 1.31 ms
+		(the module's registers need its clock at 6.25 MHz or more).
+		With WATCHDOG_AUTOMONITOR, WATCHDOG_AUTOMONITOR_TIMEOUT must be
+		5368 or less.
+
+config AM263X_WDT_TIMEOUT
+	int "Initial watchdog timeout (ms)"
+	default 5000
+	range 2 5368
+	depends on AM263X_WDT
+
 endmenu # AM263x Peripheral Selection
 
 menu "AM263x ADC Configuration"

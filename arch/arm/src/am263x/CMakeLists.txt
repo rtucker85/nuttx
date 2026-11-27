@@ -79,4 +79,8 @@ if(CONFIG_AM263X_LIN)
   list(APPEND SRCS am263x_lin.c)
 endif()
 
+if(CONFIG_AM263X_WDT)
+  list(APPEND SRCS am263x_wdt.c)
+endif()
+
 target_sources(arch PRIVATE ${SRCS})

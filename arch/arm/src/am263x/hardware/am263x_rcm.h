@@ -61,6 +61,11 @@
 #define AM263X_MSS_RCM_QSPI0_CLK_GATE_OFFSET     0x0310
 #define AM263X_MSS_RCM_QSPI0_RST_CTRL_OFFSET     0x0584
 #define AM263X_MSS_RCM_CPSW_RST_CTRL_OFFSET      0x05e0
+#define AM263X_MSS_RCM_WDT_CLK_SRC_SEL_OFFSET(n) (0x0128 + 4 * (n))
+#define AM263X_MSS_RCM_WDT_CLK_DIV_VAL_OFFSET(n) (0x0228 + 4 * (n))
+#define AM263X_MSS_RCM_WDT_CLK_GATE_OFFSET(n)    (0x0328 + 4 * (n))
+#define AM263X_MSS_RCM_WDT_CLK_STATUS_OFFSET(n)  (0x0428 + 4 * (n))
+#define AM263X_MSS_RCM_WDT_RST_CTRL_OFFSET(n)    (0x054c + 4 * (n))
 #define AM263X_MSS_RCM_LOCK0_KICK0_OFFSET        0x1008
 #define AM263X_MSS_RCM_LOCK0_KICK1_OFFSET        0x100c
 
@@ -116,6 +121,16 @@
   (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_QSPI0_CLK_GATE_OFFSET)
 #define AM263X_MSS_RCM_QSPI0_RST_CTRL \
   (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_QSPI0_RST_CTRL_OFFSET)
+#define AM263X_MSS_RCM_WDT_CLK_SRC_SEL(n) \
+  (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_WDT_CLK_SRC_SEL_OFFSET(n))
+#define AM263X_MSS_RCM_WDT_CLK_DIV_VAL(n) \
+  (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_WDT_CLK_DIV_VAL_OFFSET(n))
+#define AM263X_MSS_RCM_WDT_CLK_GATE(n) \
+  (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_WDT_CLK_GATE_OFFSET(n))
+#define AM263X_MSS_RCM_WDT_CLK_STATUS(n) \
+  (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_WDT_CLK_STATUS_OFFSET(n))
+#define AM263X_MSS_RCM_WDT_RST_CTRL(n) \
+  (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_WDT_RST_CTRL_OFFSET(n))
 #define AM263X_MSS_RCM_LOCK0_KICK0 \
   (AM263X_MSS_RCM_BASE + AM263X_MSS_RCM_LOCK0_KICK0_OFFSET)
 #define AM263X_MSS_RCM_LOCK0_KICK1 \
@@ -123,14 +138,19 @@
 
 /* TOP_RCM: SoC warm reset.  Writing 0 to WARM_RESET_REQ.SW_RST (bits 2:0)
  * resets the SoC, which then boots again in the latched boot mode.
+ * WARM_RESET_CONFIG has a 3-bit enable per warm-reset source; 7 (the reset
+ * value) lets the source reset the SoC.
  */
 
+#define AM263X_TOP_RCM_WARM_RESET_CONFIG_OFFSET 0x0004
 #define AM263X_TOP_RCM_WARM_RESET_REQ_OFFSET 0x0008
 #define AM263X_TOP_RCM_WARM_RST_CAUSE_OFFSET 0x000c
 #define AM263X_TOP_RCM_WARM_RST_CAUSE_CLR_OFFSET 0x0010
 #define AM263X_TOP_RCM_LOCK0_KICK0_OFFSET    0x1008
 #define AM263X_TOP_RCM_LOCK0_KICK1_OFFSET    0x100c
 
+#define AM263X_TOP_RCM_WARM_RESET_CONFIG \
+  (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_WARM_RESET_CONFIG_OFFSET)
 #define AM263X_TOP_RCM_WARM_RESET_REQ \
   (AM263X_TOP_RCM_BASE + AM263X_TOP_RCM_WARM_RESET_REQ_OFFSET)
 #define AM263X_TOP_RCM_WARM_RST_CAUSE \
@@ -147,6 +167,12 @@
  * SW is WARM_RESET_REQ.  Bit 6 is set with every cause; alone it is the
  * WARMRSTn pin.
  */
+
+#define TOP_RCM_WARM_RESET_CONFIG_WDOG_SHIFT(n) (16 + 4 * (n))
+#define TOP_RCM_WARM_RESET_CONFIG_WDOG_MASK(n) \
+  (7 << TOP_RCM_WARM_RESET_CONFIG_WDOG_SHIFT(n))
+#define TOP_RCM_WARM_RESET_CONFIG_WDOG_EN(n) \
+  (7 << TOP_RCM_WARM_RESET_CONFIG_WDOG_SHIFT(n))
 
 #define TOP_RCM_RST_CAUSE_POR              (1 << 0)
 #define TOP_RCM_RST_CAUSE_WDT(n)           (1 << (1 + (n)))
@@ -187,9 +213,25 @@
 #define RCM_RTI_CLKSRC_SYS_CLK             0x222
 #define RCM_RTI_CLKSRC_PER_HSDIV0_CLKOUT1  0x333
 
+#define RCM_WDT_CLKSRC_WUCPUCLK            0x000 /* reset value */
+#define RCM_WDT_CLKSRC_RCCLK10M            0x111 /* 10 MHz RC oscillator */
+#define RCM_WDT_CLKSRC_SYS_CLK             0x222 /* 200 MHz */
+#define RCM_WDT_CLKSRC_PER_HSDIV0_CLKOUT1  0x333 /* 192 MHz */
+#define RCM_WDT_CLKSRC_CORE_HSDIV0_CLKOUT1 0x444
+#define RCM_WDT_CLKSRC_RCCLK10M_ALT        0x555
+#define RCM_WDT_CLKSRC_XTAL                0x666 /* 25 MHz crystal */
+#define RCM_WDT_CLKSRC_RCCLK32K            0x777 /* 32 kHz RC oscillator */
+
 /* Clock dividers hold (divide-by - 1), repeated in three nibbles */
 
 #define RCM_CLK_DIV(n)                     ((((n) - 1) & 0xf) * 0x111)
+
+/* Clock status (WDTn_CLK_STATUS, ...): one CLKINUSE bit per source in
+ * bits 7:0, the divider in use (divide-by - 1) in bits 15:8
+ */
+
+#define RCM_CLK_STATUS(src, div)           ((1 << ((src) & 7)) | \
+                                            (((div) - 1) << 8))
 
 /* Clock gates: writing 0 ungates the clock */
 
@@ -197,7 +239,7 @@
 #define RCM_CLK_GATED                      7
 
 /* Module resets (CPSW_RST_CTRL, MCANn_RST_CTRL, LINn_RST_CTRL,
- * QSPI0_RST_CTRL): 7 holds the module in reset
+ * QSPI0_RST_CTRL, WDTn_RST_CTRL): 7 holds the module in reset
  */
 
 #define RCM_RST_ASSERT                     7

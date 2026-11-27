@@ -50,6 +50,10 @@
 #define AM263X_VIM_BASE             0x50f00000  /* each core sees its own */
 #define AM263X_GPIO0_BASE           0x52000000  /* R5FSS0-0's GPIO */
 #define AM263X_GPIO_INTXBAR_BASE    0x52e02000  /* GPIO_INT_XBAR */
+#define AM263X_WDT0_BASE            0x52100000  /* MSS WDT0-3 (RTI DWWD) */
+#define AM263X_WDT1_BASE            0x52101000
+#define AM263X_WDT2_BASE            0x52102000
+#define AM263X_WDT3_BASE            0x52103000
 #define AM263X_RTI0_BASE            0x52180000
 #define AM263X_RTI1_BASE            0x52181000
 #define AM263X_RTI2_BASE            0x52182000
