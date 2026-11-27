@@ -2165,6 +2165,58 @@ isotp_valid_llopts(FAR const struct can_isotp_ll_options *ll)
 }
 
 /****************************************************************************
+ * Name: isotp_socket_rcvbuf
+ *
+ * Description:
+ *   SOL_SOCKET SO_RCVBUF: the bytes of frames the socket may hold on its
+ *   read-ahead queue (as IOBs).  A multi-frame PDU stays there whole
+ *   until it is read, so a socket that takes long PDUs needs room for all
+ *   their frames: with CONFIG_NET_CAN_RECV_BUFSIZE alone, CAN FD frames
+ *   of 64 bytes cap a PDU at about RECV_BUFSIZE / IOB_BUFSIZE frames.
+ *   Returns -ENOPROTOOPT for any other option.
+ *
+ ****************************************************************************/
+
+static int isotp_socket_rcvbuf(FAR struct isotp_conn_s *conn, bool set,
+                               int option, FAR void *value,
+                               FAR socklen_t *value_len)
+{
+#if CONFIG_NET_CAN_RECV_BUFSIZE > 0
+  int size;
+
+  if (option != SO_RCVBUF)
+    {
+      return -ENOPROTOOPT;
+    }
+
+  if (*value_len != sizeof(int))
+    {
+      return -EINVAL;
+    }
+
+  if (!set)
+    {
+      *(FAR int *)value = conn->conn.rcvbufs;
+      return OK;
+    }
+
+  size = *(FAR int *)value;
+  if (size < 0)
+    {
+      return -EINVAL;
+    }
+
+#  if defined(CONFIG_NET_MAX_RECV_BUFSIZE) && CONFIG_NET_MAX_RECV_BUFSIZE > 0
+  size = MIN(size, CONFIG_NET_MAX_RECV_BUFSIZE);
+#  endif
+  conn->conn.rcvbufs = size;
+  return OK;
+#else
+  return -ENOPROTOOPT;
+#endif
+}
+
+/****************************************************************************
  * Name: isotp_getsockopt
  ****************************************************************************/
 
@@ -2173,6 +2225,11 @@ static int isotp_getsockopt(FAR struct socket *psock, int level,
                             FAR socklen_t *value_len)
 {
   FAR struct isotp_conn_s *conn = isotp_conn(psock);
+
+  if (level == SOL_SOCKET)
+    {
+      return isotp_socket_rcvbuf(conn, false, option, value, value_len);
+    }
 
   if (level != SOL_CAN_ISOTP)
     {
@@ -2245,6 +2302,12 @@ static int isotp_setsockopt(FAR struct socket *psock, int level,
                             socklen_t value_len)
 {
   FAR struct isotp_conn_s *conn = isotp_conn(psock);
+
+  if (level == SOL_SOCKET)
+    {
+      return isotp_socket_rcvbuf(conn, true, option, (FAR void *)value,
+                                 &value_len);
+    }
 
   if (level != SOL_CAN_ISOTP)
     {
