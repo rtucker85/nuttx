@@ -58,6 +58,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <syslog.h>
 
 #include <nuttx/arch.h>
 #include <nuttx/cache.h>
@@ -640,13 +641,14 @@ static void am263x_cpsw_linkwork(FAR void *arg)
 
       if (link)
         {
-          ninfo("Link up, %" PRIu32 " Mbps %s duplex\n", speed,
-                duplex == DUPLEX_FULL ? "full" : "half");
+          syslog(LOG_NOTICE, "%s: link up, %" PRIu32 " Mbps %s duplex\n",
+                 priv->dev.netdev.d_ifname, speed,
+                 duplex == DUPLEX_FULL ? "full" : "half");
           netdev_lower_carrier_on(&priv->dev);
         }
       else
         {
-          ninfo("Link down\n");
+          syslog(LOG_NOTICE, "%s: link down\n", priv->dev.netdev.d_ifname);
           netdev_lower_carrier_off(&priv->dev);
         }
     }
