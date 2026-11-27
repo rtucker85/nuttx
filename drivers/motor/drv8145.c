@@ -798,8 +798,12 @@ static int drv8145_setup(FAR struct drv8145_chain_s *chain)
     {
       chain->ready = true;
     }
-  else
+  else if (ret != -ENODEV)
     {
+      /* -ENODEV is a chain that does not answer, most likely without VM:
+       * not an error until someone wants to use it.
+       */
+
       mtrerr("ERROR: chain set-up failed: %d\n", ret);
     }
 
@@ -1575,7 +1579,12 @@ int drv8145_register(FAR struct spi_dev_s *spi, uint32_t devid,
     }
 
   ret = drv8145_setup(chain);
-  if (ret < 0)
+  if (ret == -ENODEV)
+    {
+      mtrwarn("WARNING: DRV8145 chain does not answer (VM off?), "
+              "will set it up on open\n");
+    }
+  else if (ret < 0)
     {
       mtrwarn("WARNING: DRV8145 chain not set up (%d), "
               "will retry on open\n", ret);
