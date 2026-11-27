@@ -67,4 +67,44 @@ uint32_t am263x_reset_cause(bool clear);
 
 uint32_t am263x_reset_report(void);
 
+/****************************************************************************
+ * Name: am263x_reset_cause_boot
+ *
+ * Description:
+ *   The reset cause of this boot: what am263x_reset_report() read before
+ *   it cleared the register, or the register itself if it has not run.
+ *   Zero after a debugger load (no reset since the last boot cleared it).
+ *
+ ****************************************************************************/
+
+uint32_t am263x_reset_cause_boot(void);
+
+/****************************************************************************
+ * Name: am263x_reset_cause_get
+ *
+ * Description:
+ *   The reset cause of this boot for BOARDIOC_RESET_CAUSE, for the boards'
+ *   board_reset_cause():
+ *
+ *     MSS WDTn            BOARDIOC_RESETCAUSE_CORE_MWDT, flag n (0-3)
+ *     HSM WDT             BOARDIOC_RESETCAUSE_CORE_MWDT, flag 4
+ *     TSENSE0/1 shutdown  BOARDIOC_RESETCAUSE_CORE_SOFT,
+ *                         flag BOARDIOC_SOFTRESETCAUSE_THERMAL
+ *     WARM_RESET_REQ      BOARDIOC_RESETCAUSE_CORE_SOFT,
+ *                         flag BOARDIOC_SOFTRESETCAUSE_USER_REBOOT
+ *     debugger            BOARDIOC_RESETCAUSE_UNKOWN
+ *     power-on            BOARDIOC_RESETCAUSE_SYS_CHIPPOR
+ *     WARMRSTn pin        BOARDIOC_RESETCAUSE_PIN
+ *     none (JTAG load)    BOARDIOC_RESETCAUSE_NONE
+ *
+ *   For the causes without a flag of their own, flag is the raw
+ *   WARM_RST_CAUSE (am263x_reset_cause_boot()).
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_BOARDCTL
+struct boardioc_reset_cause_s;
+int am263x_reset_cause_get(FAR struct boardioc_reset_cause_s *rc);
+#endif
+
 #endif /* __ARCH_ARM_SRC_AM263X_AM263X_SYSTEMRESET_H */

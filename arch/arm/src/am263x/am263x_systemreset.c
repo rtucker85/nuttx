@@ -34,6 +34,8 @@
 #include <nuttx/arch.h>
 #include <nuttx/irq.h>
 
+#include <sys/boardctl.h>
+
 #include "arm_internal.h"
 #include "hardware/am263x_rcm.h"
 #include "am263x_systemreset.h"
@@ -58,6 +60,11 @@ static const char *const g_rst_cause[] =
   "TEMP_SENSOR0_RESET (TSENSE0 thermal shutdown)",
   "TEMP_SENSOR1_RESET (TSENSE1 thermal shutdown)",
 };
+
+/* The cause am263x_reset_report() read, before it cleared the register */
+
+static uint32_t g_boot_cause;
+static bool g_boot_cause_valid;
 
 /****************************************************************************
  * Public Functions
@@ -118,6 +125,9 @@ uint32_t am263x_reset_report(void)
   uint32_t bits = cause & ~TOP_RCM_RST_CAUSE_WARM;
   int i;
 
+  g_boot_cause = cause;
+  g_boot_cause_valid = true;
+
   if (cause == 0)
     {
       /* Cleared at the last boot and no reset since: a debugger load */
@@ -145,3 +155,72 @@ uint32_t am263x_reset_report(void)
 
   return cause;
 }
+
+/****************************************************************************
+ * Name: am263x_reset_cause_boot
+ ****************************************************************************/
+
+uint32_t am263x_reset_cause_boot(void)
+{
+  return g_boot_cause_valid ? g_boot_cause : am263x_reset_cause(false);
+}
+
+/****************************************************************************
+ * Name: am263x_reset_cause_get
+ ****************************************************************************/
+
+#ifdef CONFIG_BOARDCTL
+int am263x_reset_cause_get(FAR struct boardioc_reset_cause_s *rc)
+{
+  uint32_t cause = am263x_reset_cause_boot();
+  uint32_t bits = cause & ~TOP_RCM_RST_CAUSE_WARM;
+  int i;
+
+  rc->flag = cause;
+
+  for (i = 0; i < 4; i++)
+    {
+      if ((bits & TOP_RCM_RST_CAUSE_WDT(i)) != 0)
+        {
+          rc->cause = BOARDIOC_RESETCAUSE_CORE_MWDT;
+          rc->flag  = i;
+          return OK;
+        }
+    }
+
+  if ((bits & TOP_RCM_RST_CAUSE_HSM_WDT) != 0)
+    {
+      rc->cause = BOARDIOC_RESETCAUSE_CORE_MWDT;
+      rc->flag  = 4;
+    }
+  else if ((bits & (TOP_RCM_RST_CAUSE_TSENSE0 |
+                    TOP_RCM_RST_CAUSE_TSENSE1)) != 0)
+    {
+      rc->cause = BOARDIOC_RESETCAUSE_CORE_SOFT;
+      rc->flag  = BOARDIOC_SOFTRESETCAUSE_THERMAL;
+    }
+  else if ((bits & TOP_RCM_RST_CAUSE_SW) != 0)
+    {
+      rc->cause = BOARDIOC_RESETCAUSE_CORE_SOFT;
+      rc->flag  = BOARDIOC_SOFTRESETCAUSE_USER_REBOOT;
+    }
+  else if ((bits & TOP_RCM_RST_CAUSE_DEBUG) != 0)
+    {
+      rc->cause = BOARDIOC_RESETCAUSE_UNKOWN;
+    }
+  else if ((bits & TOP_RCM_RST_CAUSE_POR) != 0)
+    {
+      rc->cause = BOARDIOC_RESETCAUSE_SYS_CHIPPOR;
+    }
+  else if (cause != 0)
+    {
+      rc->cause = BOARDIOC_RESETCAUSE_PIN;
+    }
+  else
+    {
+      rc->cause = BOARDIOC_RESETCAUSE_NONE;
+    }
+
+  return OK;
+}
+#endif
