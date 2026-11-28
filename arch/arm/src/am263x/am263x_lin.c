@@ -91,9 +91,6 @@
 
 #define LIN_NRESULTS         4
 
-#define LIN_TX_QUOTA         1
-#define LIN_RX_QUOTA         LIN_NRESULTS
-
 /* What ends a frame */
 
 #define LIN_INT_ERRORS       (LIN_INT_PE | LIN_INT_OE | LIN_INT_FE | \
@@ -181,7 +178,6 @@ static const struct netdev_ops_s g_lin_ops =
 #ifdef CONFIG_NETDEV_IOCTL
   .ioctl    = lin_ioctl,
 #endif
-  .reclaim  = lin_reclaim,
 };
 
 static struct am263x_lin_s g_lin[AM263X_LIN_NINSTANCES];
@@ -972,8 +968,6 @@ int am263x_lin_initialize(int port)
   snprintf(dev->netdev.d_ifname, IFNAMSIZ, "lin%d", port);
 
   dev->ops = &g_lin_ops;
-  dev->quota[NETPKT_TX] = LIN_TX_QUOTA;
-  dev->quota[NETPKT_RX] = LIN_RX_QUOTA;
 
   ret = netdev_lower_register(dev, NET_LL_CAN);
   if (ret < 0)
