@@ -36,10 +36,11 @@
  * Interrupts: the CPDMA's RX and TX pulses.  RX masks its own interrupt
  * and leaves the work to the upper half, which calls receive() until it
  * returns NULL; that re-enables it.  TX completions are handled in the
- * interrupt, and the packets freed later in reclaim().  The upper half
- * only calls reclaim() from transmit() or when the TX quota is used up,
- * so the TX interrupt also queues am263x_cpsw_txwork() to do it: the
- * packets would otherwise keep up to CPSW_TX_QUOTA IOBs after a burst.
+ * interrupt, and the packets freed later by the driver: in transmit(),
+ * which needs the descriptor, and in am263x_cpsw_txwork(), which the TX
+ * interrupt queues so that a burst does not keep its IOBs.  A full ring
+ * makes transmit() return -EBUSY, and the upper half offers the packet
+ * again after netdev_lower_txdone().
  *
  * The PHY: PHYLIB runs it; a work item follows its link state and sets
  * the MAC's speed and duplex to match.
@@ -104,15 +105,6 @@
 #define CPSW_CACHELINE     32
 #define CPSW_ALIGN_UP(n) \
   (((n) + CPSW_CACHELINE - 1) & ~(CPSW_CACHELINE - 1))
-
-/* Packets the driver may hold.  TX: one fewer than the descriptors, so
- * that the next descriptor's packet has always been freed (with all of
- * them held, the head would wrap onto a packet not yet freed).  RX: the
- * one between netpkt_alloc() and the upper half.
- */
-
-#define CPSW_TX_QUOTA      (CPSW_NTXDESC - 1)
-#define CPSW_RX_QUOTA      2
 
 #define CPSW_LINK_POLL     MSEC2TICK(500)
 
@@ -202,7 +194,6 @@ static const struct netdev_ops_s g_am263x_cpsw_ops =
   .ifdown   = am263x_cpsw_ifdown,
   .transmit = am263x_cpsw_transmit,
   .receive  = am263x_cpsw_receive,
-  .reclaim  = am263x_cpsw_reclaim,
 };
 
 static struct am263x_cpsw_s g_am263x_cpsw;
@@ -790,8 +781,8 @@ static int am263x_cpsw_transmit(FAR struct netdev_lowerhalf_s *dev,
       return -EMSGSIZE;
     }
 
-  /* Free what has completed.  With the TX quota one below the number of
-   * descriptors, that frees the next descriptor's packet.
+  /* Free what has completed; if the next descriptor's packet is still
+   * in flight, the ring is full
    */
 
   am263x_cpsw_reclaim(dev);
@@ -882,8 +873,7 @@ static void am263x_cpsw_reclaim(FAR struct netdev_lowerhalf_s *dev)
  *
  * Description:
  *   Free the packets of completed TX descriptors after the TX interrupt.
- *   transmit() and reclaim() run with the device locked, so this takes
- *   the lock too.
+ *   transmit() runs with the device locked, so this takes the lock too.
  *
  ****************************************************************************/
 
@@ -1093,8 +1083,6 @@ void arm_netinitialize(void)
   up_set_irq_type(AM263X_IRQ_CPSW0_TX, IRQ_RISING_EDGE);
 
   dev->ops = &g_am263x_cpsw_ops;
-  dev->quota[NETPKT_TX] = CPSW_TX_QUOTA;
-  dev->quota[NETPKT_RX] = CPSW_RX_QUOTA;
 
   ret = netdev_lower_register(dev, NET_LL_ETHERNET);
   if (ret < 0)
