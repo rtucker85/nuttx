@@ -33,10 +33,11 @@
  * RX: line 0's interrupt masks RF0N and wakes the upper half, whose
  * receive() empties FIFO 0 and unmasks it again.  TX: transmit() writes
  * the element at the FIFO's put index and keeps the packet until the
- * buffer's request is no longer pending, when reclaim() frees it.  The
- * upper half only calls reclaim() from transmit() or when the TX quota is
- * used up, so TC also queues mcan_txwork() to do it: the packets would
- * otherwise keep up to MCAN_NTX IOBs after a burst.  Bus-off starts
+ * buffer's request is no longer pending, when the driver frees it: in
+ * transmit(), which needs the element, and in mcan_txwork(), which TC
+ * queues so that a burst does not keep up to MCAN_NTX IOBs.  A full FIFO
+ * makes transmit() return -EBUSY, and the upper half offers the packet
+ * again after netdev_lower_txdone().  Bus-off starts
  * recovery at once (the controller then waits for 129 x 11 recessive
  * bits).
  */
@@ -99,11 +100,6 @@
 #if MCAN_RAM_END > AM263X_MCAN_MSGRAM_WORDS * 4
 #  error "MCAN message RAM layout too large"
 #endif
-
-/* Packets the driver may hold: one per TX element, a few for RX */
-
-#define MCAN_TX_QUOTA        MCAN_NTX
-#define MCAN_RX_QUOTA        8
 
 /* Polls for CCCR.INIT and the message RAM initialisation */
 
@@ -215,7 +211,6 @@ static const struct netdev_ops_s g_mcan_ops =
 #ifdef CONFIG_NETDEV_IOCTL
   .ioctl    = mcan_ioctl,
 #endif
-  .reclaim  = mcan_reclaim,
 };
 
 static struct am263x_mcan_s g_mcan[AM263X_MCAN_NINSTANCES];
@@ -922,8 +917,8 @@ static void mcan_reclaim(FAR struct netdev_lowerhalf_s *dev)
  * Name: mcan_txwork
  *
  * Description:
- *   Free the packets of sent elements once TC has fired.  reclaim() and
- *   transmit() run with the device locked, so this takes the lock too.
+ *   Free the packets of sent elements once TC has fired.  transmit() runs
+ *   with the device locked, so this takes the lock too.
  *
  ****************************************************************************/
 
@@ -1555,8 +1550,6 @@ int am263x_mcan_initialize(int port)
   snprintf(dev->netdev.d_ifname, IFNAMSIZ, "can%d", port);
 
   dev->ops = &g_mcan_ops;
-  dev->quota[NETPKT_TX] = MCAN_TX_QUOTA;
-  dev->quota[NETPKT_RX] = MCAN_RX_QUOTA;
 
   ret = netdev_lower_register(dev, NET_LL_CAN);
   if (ret < 0)
