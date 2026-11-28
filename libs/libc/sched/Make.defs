@@ -39,8 +39,13 @@ ifneq ($(CONFIG_BUILD_KERNEL),y)
 CSRCS += task_startup.c
 endif # CONFIG_BUILD_KERNEL
 
+# perf_gettime() for unprivileged code; a flat build uses the kernel's
+# (sched/clock/clock_perf.c), which corrects the counter's overflow
+
 ifeq ($(CONFIG_ARCH_HAVE_PERF_EVENTS_USER_ACCESS),y)
+ifneq ($(CONFIG_BUILD_FLAT),y)
   CSRCS += clock_perf.c
+endif
 endif
 
 # Add the sched directory to the build

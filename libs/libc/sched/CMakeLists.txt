@@ -43,7 +43,10 @@ if(NOT CONFIG_BUILD_KERNEL)
   list(APPEND SRCS task_startup.c)
 endif()
 
-if(CONFIG_ARCH_HAVE_PERF_EVENTS_USER_ACCESS)
+# perf_gettime() for unprivileged code; a flat build uses the kernel's
+# (sched/clock/clock_perf.c), which corrects the counter's overflow
+
+if(NOT CONFIG_BUILD_FLAT AND CONFIG_ARCH_HAVE_PERF_EVENTS_USER_ACCESS)
   list(APPEND SRCS clock_perf.c)
 endif()
 

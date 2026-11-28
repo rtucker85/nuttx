@@ -47,7 +47,13 @@
 #  define USE_UP_PERF
 #endif
 
-#ifndef CONFIG_ARCH_HAVE_PERF_EVENTS_USER_ACCESS
+/* With user access to the counter, libc has a perf_gettime() of its own
+ * for unprivileged code, without the overflow correction (it can start no
+ * watchdog).  A flat build has no unprivileged code: use this one.
+ */
+
+#if !defined(CONFIG_ARCH_HAVE_PERF_EVENTS_USER_ACCESS) || \
+    defined(CONFIG_BUILD_FLAT)
 #  if defined(USE_UP_PERF) && defined(CONFIG_PERF_OVERFLOW_CORRECTION) && \
       ULONG_MAX != UINT64_MAX
 
@@ -172,7 +178,7 @@ clock_t perf_gettime(void)
 }
 
 #  endif
-#endif /* !CONFIG_ARCH_HAVE_PERF_EVENTS_USER_ACCESS */
+#endif /* !CONFIG_ARCH_HAVE_PERF_EVENTS_USER_ACCESS || CONFIG_BUILD_FLAT */
 
 #ifdef USE_UP_PERF
 
